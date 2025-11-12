@@ -1,0 +1,280 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from langchain_ollama import OllamaLLM
+from typing import Dict, Any, List
+import logging
+from pathlib import Path
+from jinja2 import Environment, FileSystemLoader
+import yaml
+
+# Setup
+logging.basicConfig(level=logging.INFO)
+app = FastAPI(title="SDAF Chat Agent")
+llm = OllamaLLM(model="llama3.1:8b", base_url="http://host.docker.internal:11434")
+templates_dir = Path("/app/templates")
+jinja_env = Environment(loader=FileSystemLoader(templates_dir))
+
+# Global State (für MVP okay)
+class AgentState:
+    def __init__(self):
+        self.messages: List[tuple] = []
+        self.current_block = "environment"
+        self.user_answers: Dict[str, Any] = {}
+        self.tfvars_ready = False
+
+state = AgentState()
+
+# Intent Detection
+def is_smalltalk(message: str) -> bool:
+    """Erkennt, ob User eine allgemeine Frage stellt"""
+    smalltalk_keywords = [
+        "wer bist du", "was kannst du", "hilfe", "help", 
+        "was machst du", "erklärung", "einleitung", "intro"
+    ]
+    return any(keyword in message.lower() for keyword in smalltalk_keywords)
+
+def get_welcome_message() -> str:
+    """Erste Begrüßung für neue User"""
+    return """👋 **Hallo! Ich bin dein SDAF Configuration Assistant.**
+    
+Ich kann dir helfen, Terraform-Variablen für SAP-Deployments auf Azure zu generieren.
+
+**Was du tun kannst:**
+1. **Easy Mode**: Gib 5 Werte ein → TFVARS-Datei wird erzeugt
+2. **Fragen stellen**: "Was ist ein SAP SID?" oder "Welche Regionen gibt es?"
+
+**Starte jetzt:**
+- Gib deine **Environment** ein: `MGMT, DEV, westeurope`
+- Oder frage mich: `Was kannst du für mich tun?`
+"""
+
+def get_help_message() -> str:
+    """Detaillierte Hilfe"""
+    return """📖 **Verfügbare Kommandos:**
+
+**Environment Block:**
+- `MGMT, DEV, westeurope` → Deployer, Workload, Region
+- Regionen: `westeurope`, `northeurope`, `germanywestcentral`
+
+**SAP System Block:**
+- `X01, S4HANA2023, small` → SID, Produkt, Sizing
+- Produkte: `S4HANA2023`, `S4HANA2022`, `SAP_NETWEAVER_750`
+- Sizing: `small`, `medium`, `large`
+
+**Fragen:**
+- `Was ist ein SAP SID?` → Ich erkläre es dir
+- `Welche VM-Größen gibt es?` → Zeige Sizing-Tabelle
+"""
+
+# FastAPI
+class ChatRequest(BaseModel):
+    message: str
+
+def generate_tfvars_content(answers: Dict[str, Any]) -> str:
+    """Generiert TFVARS aus Antworten"""
+    try:
+        # Lade Defaults
+        defaults_path = templates_dir / "easy_defaults.yaml"
+        config = yaml.safe_load(defaults_path.read_text())
+        
+        # Update mit user answers
+        config.update({
+            "deployer_environment": answers.get("deployer", "MGMT"),
+            "workload_environment": answers.get("workload", "DEV"),
+            "location": answers.get("region", "westeurope"),
+            "sap_sid": answers.get("sap_sid", "X01"),
+            "sap_product_id": answers.get("product", "S4HANA2023"),
+            "sap_system_name": answers.get("sap_sid", "X01"),
+            "database_sid": f"{answers.get('sap_sid', 'X01')}DB",
+            "workload_zone": f"{answers.get('workload', 'DEV')}-WEEU-{answers.get('sap_sid', 'X01')}",
+        })
+        
+        # Sizing
+        sizing_map = {
+            "small": {"app": "Standard_D4s_v3", "db": "Standard_E16s_v3", "scs": "Standard_D2s_v3"},
+            "medium": {"app": "Standard_D8s_v3", "db": "Standard_E32s_v3", "scs": "Standard_D4s_v3"},
+            "large": {"app": "Standard_D16s_v3", "db": "Standard_E64s_v3", "scs": "Standard_D8s_v3"},
+        }
+        sizing = answers.get("sizing", "small")
+        if sizing in sizing_map:
+            config["app_tier_sku"] = sizing_map[sizing]["app"]
+            config["database_tier_sku"] = sizing_map[sizing]["db"]
+            config["scs_tier_sku"] = sizing_map[sizing]["scs"]
+        
+        # Render template
+        template = jinja_env.get_template("sap.tfvars.j2")
+        return template.render(config=config)
+    except Exception as e:
+        logging.error(f"TFVARS Error: {e}")
+        return f"ERROR: {e}"
+
+@app.post("/chat")
+def chat_endpoint(req: ChatRequest):
+    global state
+    
+    try:
+        # === WICHTIG: Zuerst Intent prüfen! ===
+        message_lower = req.message.lower().strip()
+        
+        # Smalltalk-Keywords (Groß-/Kleinschreibung egal)
+        if any(keyword in message_lower for keyword in 
+               ["wer bist du", "was kannst du", "hilfe", "help", 
+                "was machst du", "erklärung", "einleitung", "intro",
+                "sap sid", "region", "sizing", "produkt"]):
+            
+            # User-Nachricht speichern
+            state.messages.append(("user", req.message))
+            
+            # Antwort auf Basis des Keywords
+            if "sap sid" in message_lower:
+                reply = """🔤 **SAP SID (System Identifier)**
+                
+- **3 Zeichen**, z.B. `X01`, `P01`, `Q01`
+- Muss **UPPERCASE** sein
+- Jede SID repräsentiert ein SAP-System
+- **Beispiele:**
+  - DEV: `X01`, `D01`
+  - TST: `T01`, `Q01`
+  - PRD: `P01`, `S01`"""
+            
+            elif "was kannst du" in message_lower or "hilfe" in message_lower:
+                reply = """📖 **Verfügbare Kommandos:**
+
+**1. Environment Block:**
+Gib ein: `MGMT, DEV, westeurope`
+- Deployer: MGMT/DEV/TST/PRD
+- Workload: DEV/TST/PRD
+- Region: westeurope/northeurope/germanywestcentral
+
+**2. SAP System Block:**
+Gib ein: `X01, S4HANA2023, small`
+- SAP SID: 3 Zeichen (z.B. X01)
+- Produkt: S4HANA2023/S4HANA2022/SAP_NETWEAVER_750
+- Sizing: small/medium/large
+
+**3. Fragen:**
+- `Was ist ein SAP SID?`
+- `Welche Regionen gibt es?`
+- `Was bedeutet Sizing?`"""
+            
+            elif "region" in message_lower:
+                reply = """🌍 **Verfügbare Azure Regionen für SAP:**
+                
+- `westeurope` (Amsterdam) - **Empfohlen**
+- `northeurope` (Irland)
+- `germanywestcentral` (Frankfurt, aber teurer)"""
+            
+            elif "sizing" in message_lower:
+                reply = """📊 **VM Sizing Profile**
+
+**small** (Dev/Test):
+- App: Standard_D4s_v3
+- DB: Standard_E16s_v3
+
+**medium** (Test/QA):
+- App: Standard_D8s_v3
+- DB: Standard_E32s_v3
+
+**large** (Production):
+- App: Standard_D16s_v3
+- DB: Standard_E64s_v3"""
+            
+            elif "wer bist du" in message_lower:
+                reply = """👋 **Ich bin dein SDAF Configuration Assistant!**
+
+Ich helfe dir, **Terraform-Variablen** für SAP-Deployments auf Azure zu generieren.
+
+**Fähigkeiten:**
+- ✅ Interaktive Konfiguration per Chat
+- ✅ Validierung mit Llama 3.1 8B
+- ✅ TFVARS-Datei Download
+- ✅ Erklärungen zu SAP/SDAF/TFVARS
+
+**Los geht's:**
+Gib deine Environment ein: `MGMT, DEV, westeurope`"""
+            
+            else:
+                reply = "👋 Schreibe `Hilfe` oder `Was kannst du?` für mehr Infos!"
+            
+            # Bot-Antwort speichern
+            state.messages.append(("assistant", reply))
+            
+            return {
+                "reply": reply,
+                "state": {
+                    "messages": state.messages,
+                    "current_block": state.current_block,
+                    "user_answers": state.user_answers,
+                    "tfvars_ready": state.tfvars_ready
+                },
+                "tfvars": "",
+                "tfvars_ready": False
+            }
+        
+        # === NORMALER TFVARS FLOW (nur wenn KEIN Smalltalk) ===
+        if state.current_block == "environment":
+            try:
+                parts = [p.strip() for p in req.message.split(",")]
+                if len(parts) != 3:
+                    raise ValueError("3 Werte erwartet")
+                state.user_answers["deployer"] = parts[0]
+                state.user_answers["workload"] = parts[1]
+                state.user_answers["region"] = parts[2]
+                state.messages.append(("user", req.message))
+                reply = "✅ Environment validiert! Nächster Block..."
+                state.current_block = "sap_system"
+            except:
+                reply = "❌ Bitte genau 3 Werte mit Kommas angeben."
+                state.messages.append(("assistant", reply))
+            
+        elif state.current_block == "sap_system":
+            try:
+                parts = [p.strip() for p in req.message.split(",")]
+                if len(parts) != 3:
+                    raise ValueError("3 Werte erwartet")
+                state.user_answers["sap_sid"] = parts[0].upper()
+                state.user_answers["product"] = parts[1]
+                state.user_answers["sizing"] = parts[2]
+                state.messages.append(("user", req.message))
+                reply = "✅ SAP System validiert! 🎉 TFVARS wird generiert..."
+                state.current_block = "complete"
+                state.tfvars_ready = True
+            except:
+                reply = "❌ Bitte genau 3 Werte mit Kommas angeben."
+                state.messages.append(("assistant", reply))
+        
+        else:
+            # Bereits fertig
+            reply = "🎉 Bereits fertig! Nutze den Download-Button oder frage `Hilfe`."
+            state.messages.append(("assistant", reply))
+        
+        # TFVARS generieren wenn fertig
+        tfvars = ""
+        if state.tfvars_ready:
+            tfvars = generate_tfvars_content(state.user_answers)
+        
+        return {
+            "reply": reply,
+            "state": {
+                "messages": state.messages,
+                "current_block": state.current_block,
+                "user_answers": state.user_answers,
+                "tfvars_ready": state.tfvars_ready
+            },
+            "tfvars": tfvars,
+            "tfvars_ready": state.tfvars_ready
+        }
+    
+    except Exception as e:
+        logging.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/reset")
+def reset():
+    global state
+    state = AgentState()
+    return {"status": "reset"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build: ./backend
@@ -10,6 +8,8 @@ services:
       - OLLAMA_HOST=http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ./templates:/app/templates  # WICHTIG: Templates einbinden
     restart: unless-stopped
 
   frontend:

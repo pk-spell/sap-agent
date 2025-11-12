@@ -1,0 +1,59 @@
+# SAP Deployment Automation Framework - Easy Mode Defaults
+# Diese Werte funktionieren "out-of-the-box" für 90% der SAP-Deployments
+
+# --- Environment Block ---
+deployer_environment: "MGMT"
+workload_environment: "DEV"
+workload_zone: "DEV-WEEU"
+location: "westeurope"
+network_logical_name: "SAP01"
+
+# --- SAP System Block ---
+sap_system_name: "SAP01"
+sap_product_id: "S4HANA2023"
+database_platform: "HANA"
+database_sid: "XDB"
+
+# --- Infrastructure Sizing (Small = Non-PRD) ---
+app_tier_sku: "Standard_D4s_v3"
+web_tier_sku: "Standard_D2s_v3"
+database_tier_sku: "Standard_E16s_v3"
+scs_tier_sku: "Standard_D2s_v3"
+
+# --- Network (Dummy ARM IDs - werden in echtem Deployment ersetzt) ---
+# Pattern: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/{subnet}
+ingress_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-ingress"
+admin_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-admin"
+db_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-db"
+app_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-app"
+web_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-web"
+
+# --- Security ---
+automation_username: "azureadm"
+enable_secure_boot: false
+enable_disk_encryption: true
+enable_accelerated_networking: true
+
+# --- High Availability (Easy Mode = disabled) ---
+high_availability: false
+scs_high_availability: false
+database_high_availability: false
+
+# --- Tags (Kosten-Tracking) ---
+cost_center: "CC-99999"
+business_unit: "SAP-IT"
+project_owner: "SAP-Team"
+
+# --- OS Configuration ---
+os_type: "LINUX"
+os_major_version: "RHEL"
+os_minor_version: "84"
+use_avset: false  # Availability Sets (alt)
+use_zones: false  # Availability Zones (neu)
+
+# --- Additional Features (Easy Mode = disabled) ---
+use_load_balancer: true
+load_balancer_type: "STANDARD"
+application_security_groups: false
+enable_backup: false
+enable_diagnostics: false
