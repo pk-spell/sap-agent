@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: sap-agent-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: sap-agent-frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    restart: unless-stopped
