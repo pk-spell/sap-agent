@@ -13,7 +13,7 @@ services:
       - ./data:/app/data
     # Sicherstellen, dass data-Verzeichnis existiert:
     command: >
-      sh -c "mkdir -p /app/data && python main.py"
+      sh -c "mkdir -p /app/data && python main_v2.py"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s

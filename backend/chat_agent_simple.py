@@ -326,15 +326,17 @@ def init_db():
     """Erstellt Tabelle falls nicht existiert"""
     # SICHERSTELLEN, dass das Verzeichnis existiert
     Path("/app/data").mkdir(parents=True, exist_ok=True)
-    
+
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 session_id TEXT PRIMARY KEY,
+                title TEXT DEFAULT 'New Chat',
                 messages TEXT NOT NULL,
                 user_answers TEXT,
                 tfvars_content TEXT,
+                current_block TEXT DEFAULT 'environment',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -346,39 +348,76 @@ def init_db():
         logging.error(f"❌ Datenbank-Fehler: {e}")
         raise
 
-def save_session(session_id: str, messages: list, user_answers: dict, tfvars: str):
+def generate_chat_title(user_answers: dict, messages: list) -> str:
+    """Generiert automatischen Titel basierend auf Chat-Inhalt"""
+    if user_answers.get("sap_sid") and user_answers.get("region"):
+        sid = user_answers.get("sap_sid", "")
+        region = user_answers.get("region", "")
+        product = user_answers.get("product", "")
+        return f"{product} {sid} - {region}"
+    elif user_answers.get("region"):
+        return f"SAP Config - {user_answers.get('region')}"
+    elif len(messages) > 2:
+        return f"Chat - {datetime.now().strftime('%H:%M')}"
+    else:
+        return "New Chat"
+
+def save_session(session_id: str, messages: list, user_answers: dict, tfvars: str, current_block: str = "environment", title: str = None):
     """Speichert Session in DB"""
+    if title is None:
+        title = generate_chat_title(user_answers, messages)
+
     conn = sqlite3.connect(DB_PATH)
     conn.execute("""
-        INSERT OR REPLACE INTO sessions 
-        (session_id, messages, user_answers, tfvars_content, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (session_id, json.dumps(messages), json.dumps(user_answers), tfvars, datetime.now()))
+        INSERT OR REPLACE INTO sessions
+        (session_id, title, messages, user_answers, tfvars_content, current_block, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (session_id, title, json.dumps(messages), json.dumps(user_answers), tfvars, current_block, datetime.now()))
     conn.commit()
     conn.close()
 
 def load_session(session_id: str) -> dict:
     """Lädt Session aus DB"""
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.execute("SELECT messages, user_answers, tfvars_content FROM sessions WHERE session_id = ?", (session_id,))
+    cursor = conn.execute(
+        "SELECT messages, user_answers, tfvars_content, current_block, title FROM sessions WHERE session_id = ?",
+        (session_id,)
+    )
     row = cursor.fetchone()
     conn.close()
-    
+
     if row:
         return {
             "messages": json.loads(row[0]),
             "user_answers": json.loads(row[1] or "{}"),
-            "tfvars_content": row[2] or ""
+            "tfvars_content": row[2] or "",
+            "current_block": row[3] or "environment",
+            "title": row[4] or "New Chat"
         }
     return None
 
 def get_all_sessions() -> list:
     """Zeigt alle Sessions (für Admin-View)"""
     conn = sqlite3.connect(DB_PATH)
-    cursor = conn.execute("SELECT session_id, created_at FROM sessions ORDER BY created_at DESC")
+    cursor = conn.execute(
+        "SELECT session_id, title, created_at, updated_at FROM sessions ORDER BY updated_at DESC"
+    )
     rows = cursor.fetchall()
     conn.close()
-    return [{"session_id": r[0], "created_at": r[1]} for r in rows]
+    return [{"session_id": r[0], "title": r[1], "created_at": r[2], "updated_at": r[3]} for r in rows]
+
+def delete_session(session_id: str) -> bool:
+    """Löscht eine Session aus der DB"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+        conn.commit()
+        deleted = conn.total_changes > 0
+        conn.close()
+        return deleted
+    except Exception as e:
+        logging.error(f"Error deleting session {session_id}: {e}")
+        return False
 
 # NEUE ENDPOINTS
 
@@ -388,12 +427,13 @@ def save_chat(req: dict):
     session_id = req.get("session_id")
     if not session_id:
         session_id = str(uuid.uuid4())[:8]
-    
+
     save_session(
         session_id,
         state.messages,
         state.user_answers,
-        state.tfvars_content if state.tfvars_ready else ""
+        state.tfvars_content if state.tfvars_ready else "",
+        state.current_block
     )
     return {"session_id": session_id, "status": "saved"}
 
@@ -401,22 +441,39 @@ def save_chat(req: dict):
 def load_chat(req: dict):
     """Lädt alten Chat"""
     global state
-    
+
     session_id = req.get("session_id")
     data = load_session(session_id)
-    
+
     if data:
         state.messages = data["messages"]
         state.user_answers = data["user_answers"]
         state.tfvars_content = data["tfvars_content"]
         state.tfvars_ready = bool(state.tfvars_content)
-        return {"found": True, "session_id": session_id}
+        state.current_block = data.get("current_block", "environment")
+        return {
+            "found": True,
+            "session_id": session_id,
+            "messages": data["messages"],
+            "user_answers": data["user_answers"],
+            "current_block": state.current_block,
+            "tfvars_ready": state.tfvars_ready
+        }
     return {"found": False}
 
 @app.get("/list-sessions")
 def list_sessions():
     """Gibt alle Sessions zurück (Admin)"""
     return {"sessions": get_all_sessions()}
+
+@app.delete("/delete-session/{session_id}")
+def delete_session_endpoint(session_id: str):
+    """Löscht eine Session"""
+    success = delete_session(session_id)
+    if success:
+        return {"status": "deleted", "session_id": session_id}
+    else:
+        raise HTTPException(status_code=404, detail="Session not found")
 
 # AUTOMATISCHE DB-INITIALISIERUNG BEI START
 
