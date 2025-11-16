@@ -6,6 +6,10 @@ import logging
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 import yaml
+import sqlite3
+import uuid
+import json
+from datetime import datetime
 
 # Setup
 logging.basicConfig(level=logging.INFO)
@@ -278,3 +282,143 @@ def reset():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# SQLite Setup
+DB_PATH = "/app/data/chat_history.db"
+
+def init_db():
+    """Erstellt Tabelle falls nicht existiert"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id TEXT PRIMARY KEY,
+            messages TEXT NOT NULL,
+            user_answers TEXT,
+            tfvars_content TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def save_session(session_id: str, messages: list, user_answers: dict, tfvars: str):
+    """Speichert Session in DB"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        INSERT OR REPLACE INTO sessions 
+        (session_id, messages, user_answers, tfvars_content, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (session_id, json.dumps(messages), json.dumps(user_answers), tfvars, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def load_session(session_id: str) -> dict:
+    """Lädt Session aus DB"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.execute("SELECT messages, user_answers, tfvars_content FROM sessions WHERE session_id = ?", (session_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            "messages": json.loads(row[0]),
+            "user_answers": json.loads(row[1] or "{}"),
+            "tfvars_content": row[2] or ""
+        }
+    return None
+
+def get_all_sessions() -> list:
+    """Zeigt alle Sessions (für Admin-View)"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.execute("SELECT session_id, created_at FROM sessions ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"session_id": r[0], "created_at": r[1]} for r in rows]
+
+# Session ID für jeden User (im Frontend Cookie-basiert)
+def get_or_create_session_id() -> str:
+    """Erzeugt neue Session ID"""
+    return str(uuid.uuid4())[:8]  # Kurz für bessere Darstellung
+
+# NEUE ENDPOINTS
+
+@app.post("/save-chat")
+def save_chat(req: dict):
+    """Speichert aktuellen Chat"""
+    session_id = req.get("session_id")
+    if not session_id:
+        session_id = get_or_create_session_id()
+    
+    save_session(
+        session_id,
+        state.messages,
+        state.user_answers,
+        state.tfvars_content if state.tfvars_ready else ""
+    )
+    return {"session_id": session_id, "status": "saved"}
+
+@app.post("/load-chat")
+def load_chat(req: dict):
+    """Lädt alten Chat"""
+    global state
+    
+    session_id = req.get("session_id")
+    data = load_session(session_id)
+    
+    if data:
+        state.messages = data["messages"]
+        state.user_answers = data["user_answers"]
+        state.tfvars_content = data["tfvars_content"]
+        state.tfvars_ready = bool(state.tfvars_content)
+        return {"found": True, "session_id": session_id}
+    return {"found": False}
+
+@app.get("/list-sessions")
+def list_sessions():
+    """Gibt alle Sessions zurück (Admin)"""
+    return {"sessions": get_all_sessions()}
+
+
+# === AUTOMATISCHE DB-INITIALISIERUNG BEI START ===
+
+@app.on_event("startup")
+async def startup_event():
+    """Startet beim Boot des Backends"""
+    logging.info("🗄️ Initialisiere SQLite Datenbank...")
+    init_db()
+    logging.info("✅ Datenbank bereit!")
+
+# === NEUE ENDPOINTS FÜR SQLITE ===
+
+@app.get("/init-db")
+def init_db_endpoint():
+    """Manuelles Initialisieren (für Debugging)"""
+    try:
+        init_db()
+        return {"status": "initialized", "path": DB_PATH}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/list-sessions")
+def list_sessions():
+    """Gibt alle Sessions zurück"""
+    try:
+        init_db()  # Sicherstellen dass DB existiert
+        return {"sessions": get_all_sessions()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/save-chat")
+def save_chat(req: dict):
+    """Speichert aktuellen Chat"""
+    try:
+        session_id = req.get("session_id", str(uuid.uuid4())[:8])
+        save_session(session_id, state.messages, state.user_answers, state.tfvars_content)
+        return {"session_id": session_id, "status": "saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Beim Modul-Import automatisch initialisieren
+init_db()  # Sicherstellen dass DB existiert
