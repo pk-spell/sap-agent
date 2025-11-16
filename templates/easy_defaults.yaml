@@ -57,3 +57,63 @@ load_balancer_type: "STANDARD"
 application_security_groups: false
 enable_backup: false
 enable_diagnostics: false
+
+
+# --- SAP DEPLOYMENT AUTOMATION FRAMEWORK - REQUIRED VALUES ---
+
+# Bill of Materials (BOM) - Wichtig für SAP-Software-Versionen
+bom_base_name: "S4HANA2023SPS01"  # Basis-BOM Name
+
+# High Availability & Sizing
+use_single_node_hana: true  # true = eine DB-VM, false = HANA-Cluster
+scs_high_availability: false
+database_high_availability: false
+high_availability: false
+
+# Service Principal & Authentication
+use_spn: true  # Use Service Principal instead of Managed Identity
+spn_client_id: "00000000-0000-0000-0000-000000000000"  # Platzhalter
+spn_tenant_id: "00000000-0000-0000-0000-000000000000"   # Platzhalter
+
+# Key Vault für Secrets (Zertifikate, Passwörter)
+key_vault_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.KeyVault/vaults/kv-sap-mgmt"
+
+# Storage Account für Boot-Diagnostics
+storage_account: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Storage/storageAccounts/stsapmgmt"
+
+# Application Security Groups (ASG)
+application_security_groups: false
+
+# Diagnostics
+enable_diagnostics: true
+diagnostics_storage_account: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Storage/storageAccounts/stsapmgmt"
+
+# Backup (optional, aber empfohlen)
+enable_backup: false
+backup_storage_account: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Storage/storageAccounts/backup-sap-mgmt"
+
+# Monitoring
+enable_monitoring: false
+log_analytics_workspace_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.OperationalInsights/workspaces/log-sap-mgmt"
+
+# Tags (für Cost Management)
+cost_center: "CC-99999"
+business_unit: "SAP-IT"
+project_owner: "SAP-Team"
+project: "SAP-Deployment"
+criticality: "Mission-Critical"
+
+# OS Configuration
+os_type: "LINUX"
+os_major_version: "RHEL"
+os_minor_version: "84"
+use_avset: false
+use_zones: false
+
+# Additional Features
+use_load_balancer: true
+load_balancer_type: "STANDARD"
+load_balancer_sku: "Standard"
+enable_accelerated_networking: true
+enable_secure_boot: false
+enable_disk_encryption: true

@@ -9,8 +9,16 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./templates:/app/templates  # WICHTIG: Templates einbinden
-      - ./data:/app/data 
+      - ./templates:/app/templates
+      - ./data:/app/data
+    # Sicherstellen, dass data-Verzeichnis existiert:
+    command: >
+      sh -c "mkdir -p /app/data && python main.py"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   frontend:
@@ -19,5 +27,8 @@ services:
     ports:
       - "8501:8501"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    environment:
+      - API_URL=http://backend:8000
     restart: unless-stopped

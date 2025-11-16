@@ -1,6 +1,9 @@
+# backend/chat_agent_simple.py - VOLLSTÄNDIG & KORREKT
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from langchain_ollama import OllamaLLM
+from langchain_community.cache import InMemoryCache
+import langchain
 from typing import Dict, Any, List
 import logging
 from pathlib import Path
@@ -14,9 +17,19 @@ from datetime import datetime
 # Setup
 logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="SDAF Chat Agent")
-llm = OllamaLLM(model="llama3.1:8b", base_url="http://host.docker.internal:11434")
+
+# Async-fähiges LLM mit korrigierter URL
+llm = OllamaLLM(
+    model="llama3.1:8b", 
+    base_url="http://host.docker.internal:11434",
+    async_mode=True
+)
+
 templates_dir = Path("/app/templates")
 jinja_env = Environment(loader=FileSystemLoader(templates_dir))
+
+# Cache aktivieren (OHNE maxsize!)
+langchain.llm_cache = InMemoryCache()
 
 # Global State (für MVP okay)
 class AgentState:
@@ -25,6 +38,7 @@ class AgentState:
         self.current_block = "environment"
         self.user_answers: Dict[str, Any] = {}
         self.tfvars_ready = False
+        self.tfvars_content = ""
 
 state = AgentState()
 
@@ -70,10 +84,6 @@ def get_help_message() -> str:
 - `Welche VM-Größen gibt es?` → Zeige Sizing-Tabelle
 """
 
-# FastAPI
-class ChatRequest(BaseModel):
-    message: str
-
 def generate_tfvars_content(answers: Dict[str, Any]) -> str:
     """Generiert TFVARS aus Antworten"""
     try:
@@ -112,22 +122,25 @@ def generate_tfvars_content(answers: Dict[str, Any]) -> str:
         logging.error(f"TFVARS Error: {e}")
         return f"ERROR: {e}"
 
+# FastAPI
+class ChatRequest(BaseModel):
+    message: str
+
 @app.post("/chat")
-def chat_endpoint(req: ChatRequest):
+async def chat_endpoint(req: ChatRequest):  # <-- !! DER FEHLENDE DOPPELPUNKT !!
     global state
     
     try:
         # === WICHTIG: Zuerst Intent prüfen! ===
         message_lower = req.message.lower().strip()
         
-        # Smalltalk-Keywords (Groß-/Kleinschreibung egal)
+        # User-Nachricht speichern
+        state.messages.append(("user", req.message))
+        
+        # FAST-PATH: Keywords für bekannte Themen
         if any(keyword in message_lower for keyword in 
-               ["wer bist du", "was kannst du", "hilfe", "help", 
-                "was machst du", "erklärung", "einleitung", "intro",
-                "sap sid", "region", "sizing", "produkt"]):
-            
-            # User-Nachricht speichern
-            state.messages.append(("user", req.message))
+               ["sap sid", "region", "sizing", "produkt", "wer bist du", 
+                "was kannst du", "hilfe", "help", "einleitung", "intro"]):
             
             # Antwort auf Basis des Keywords
             if "sap sid" in message_lower:
@@ -142,24 +155,7 @@ def chat_endpoint(req: ChatRequest):
   - PRD: `P01`, `S01`"""
             
             elif "was kannst du" in message_lower or "hilfe" in message_lower:
-                reply = """📖 **Verfügbare Kommandos:**
-
-**1. Environment Block:**
-Gib ein: `MGMT, DEV, westeurope`
-- Deployer: MGMT/DEV/TST/PRD
-- Workload: DEV/TST/PRD
-- Region: westeurope/northeurope/germanywestcentral
-
-**2. SAP System Block:**
-Gib ein: `X01, S4HANA2023, small`
-- SAP SID: 3 Zeichen (z.B. X01)
-- Produkt: S4HANA2023/S4HANA2022/SAP_NETWEAVER_750
-- Sizing: small/medium/large
-
-**3. Fragen:**
-- `Was ist ein SAP SID?`
-- `Welche Regionen gibt es?`
-- `Was bedeutet Sizing?`"""
+                reply = get_help_message()
             
             elif "region" in message_lower:
                 reply = """🌍 **Verfügbare Azure Regionen für SAP:**
@@ -182,6 +178,13 @@ Gib ein: `X01, S4HANA2023, small`
 **large** (Production):
 - App: Standard_D16s_v3
 - DB: Standard_E64s_v3"""
+            
+            elif "produkt" in message_lower:
+                reply = """📦 **Verfügbare SAP Produkte:**
+                
+- `S4HANA2023`
+- `S4HANA2022`
+- `SAP_NETWEAVER_750`"""
             
             elif "wer bist du" in message_lower:
                 reply = """👋 **Ich bin dein SDAF Configuration Assistant!**
@@ -215,6 +218,41 @@ Gib deine Environment ein: `MGMT, DEV, westeurope`"""
                 "tfvars_ready": False
             }
         
+        # SLOW-PATH: ASYNC LLM für unbekannte/unstrukturierte Fragen
+        elif is_smalltalk(req.message):
+            prompt = f"""Du bist ein hilfreicher SAP SDAF Experten-Assistent. 
+Der User fragt: "{req.message}"
+
+Beantworte:
+- Kurz und präzise (max. 250 Zeichen)
+- Fokussiert auf SAP, Terraform, Azure
+- Wenn unklar, biete Hilfe an
+
+Antwort:"""
+            
+            # ASYNC LLM Call - Hier passiert die Magie!
+            reply = await llm.ainvoke(prompt)
+            
+            # Safety fallback
+            if not reply or len(reply.strip()) < 5:
+                reply = get_help_message()
+            else:
+                reply = f"🤖 **Assistent:** {reply.strip()}"
+            
+            state.messages.append(("assistant", reply))
+            
+            return {
+                "reply": reply,
+                "state": {
+                    "messages": state.messages,
+                    "current_block": state.current_block,
+                    "user_answers": state.user_answers,
+                    "tfvars_ready": state.tfvars_ready
+                },
+                "tfvars": "",
+                "tfvars_ready": False
+            }
+        
         # === NORMALER TFVARS FLOW (nur wenn KEIN Smalltalk) ===
         if state.current_block == "environment":
             try:
@@ -224,7 +262,6 @@ Gib deine Environment ein: `MGMT, DEV, westeurope`"""
                 state.user_answers["deployer"] = parts[0]
                 state.user_answers["workload"] = parts[1]
                 state.user_answers["region"] = parts[2]
-                state.messages.append(("user", req.message))
                 reply = "✅ Environment validiert! Nächster Block..."
                 state.current_block = "sap_system"
             except:
@@ -239,7 +276,6 @@ Gib deine Environment ein: `MGMT, DEV, westeurope`"""
                 state.user_answers["sap_sid"] = parts[0].upper()
                 state.user_answers["product"] = parts[1]
                 state.user_answers["sizing"] = parts[2]
-                state.messages.append(("user", req.message))
                 reply = "✅ SAP System validiert! 🎉 TFVARS wird generiert..."
                 state.current_block = "complete"
                 state.tfvars_ready = True
@@ -283,25 +319,32 @@ def reset():
 def health():
     return {"status": "ok"}
 
-
 # SQLite Setup
 DB_PATH = "/app/data/chat_history.db"
 
 def init_db():
     """Erstellt Tabelle falls nicht existiert"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            session_id TEXT PRIMARY KEY,
-            messages TEXT NOT NULL,
-            user_answers TEXT,
-            tfvars_content TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
+    # SICHERSTELLEN, dass das Verzeichnis existiert
+    Path("/app/data").mkdir(parents=True, exist_ok=True)
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id TEXT PRIMARY KEY,
+                messages TEXT NOT NULL,
+                user_answers TEXT,
+                tfvars_content TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        conn.close()
+        logging.info(f"✅ Datenbank erfolgreich initialisiert unter {DB_PATH}")
+    except Exception as e:
+        logging.error(f"❌ Datenbank-Fehler: {e}")
+        raise
 
 def save_session(session_id: str, messages: list, user_answers: dict, tfvars: str):
     """Speichert Session in DB"""
@@ -337,11 +380,6 @@ def get_all_sessions() -> list:
     conn.close()
     return [{"session_id": r[0], "created_at": r[1]} for r in rows]
 
-# Session ID für jeden User (im Frontend Cookie-basiert)
-def get_or_create_session_id() -> str:
-    """Erzeugt neue Session ID"""
-    return str(uuid.uuid4())[:8]  # Kurz für bessere Darstellung
-
 # NEUE ENDPOINTS
 
 @app.post("/save-chat")
@@ -349,7 +387,7 @@ def save_chat(req: dict):
     """Speichert aktuellen Chat"""
     session_id = req.get("session_id")
     if not session_id:
-        session_id = get_or_create_session_id()
+        session_id = str(uuid.uuid4())[:8]
     
     save_session(
         session_id,
@@ -380,8 +418,7 @@ def list_sessions():
     """Gibt alle Sessions zurück (Admin)"""
     return {"sessions": get_all_sessions()}
 
-
-# === AUTOMATISCHE DB-INITIALISIERUNG BEI START ===
+# AUTOMATISCHE DB-INITIALISIERUNG BEI START
 
 @app.on_event("startup")
 async def startup_event():
@@ -389,36 +426,6 @@ async def startup_event():
     logging.info("🗄️ Initialisiere SQLite Datenbank...")
     init_db()
     logging.info("✅ Datenbank bereit!")
-
-# === NEUE ENDPOINTS FÜR SQLITE ===
-
-@app.get("/init-db")
-def init_db_endpoint():
-    """Manuelles Initialisieren (für Debugging)"""
-    try:
-        init_db()
-        return {"status": "initialized", "path": DB_PATH}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/list-sessions")
-def list_sessions():
-    """Gibt alle Sessions zurück"""
-    try:
-        init_db()  # Sicherstellen dass DB existiert
-        return {"sessions": get_all_sessions()}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/save-chat")
-def save_chat(req: dict):
-    """Speichert aktuellen Chat"""
-    try:
-        session_id = req.get("session_id", str(uuid.uuid4())[:8])
-        save_session(session_id, state.messages, state.user_answers, state.tfvars_content)
-        return {"session_id": session_id, "status": "saved"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Beim Modul-Import automatisch initialisieren
 init_db()  # Sicherstellen dass DB existiert
