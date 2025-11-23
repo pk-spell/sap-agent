@@ -1,7 +1,7 @@
 services:
   backend:
     build: ./backend
-    container_name: sap-agent-backend
+    container_name: sap-agent-backend-v3
     ports:
       - "8000:8000"
     environment:
@@ -11,9 +11,13 @@ services:
     volumes:
       - ./templates:/app/templates
       - ./data:/app/data
-    # Sicherstellen, dass data-Verzeichnis existiert:
+      - ./backend/parsers:/app/parsers
+      - ./backend/utils:/app/utils
+      - ./backend/tfvars:/app/tfvars
+      - ./backend/config.yaml:/app/config.yaml
+    # V3 Backend starten
     command: >
-      sh -c "mkdir -p /app/data && python main_v2.py"
+      sh -c "mkdir -p /app/data && python main_v3.py"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -22,13 +26,14 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
-    container_name: sap-agent-frontend
+    build:
+      context: ./frontend-react
+      args:
+        - VITE_API_URL=http://localhost:8000
+    container_name: sap-agent-frontend-v3
     ports:
-      - "8501:8501"
+      - "5173:80"
     depends_on:
       backend:
         condition: service_healthy
-    environment:
-      - API_URL=http://backend:8000
     restart: unless-stopped

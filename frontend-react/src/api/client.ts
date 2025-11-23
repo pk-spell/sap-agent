@@ -66,12 +66,12 @@ class ApiClient {
    * Create a new chat session
    */
   async createSession(): Promise<Session> {
-    const response = await this.fetchApi<CreateSessionResponse>('/chat', {
+    const response = await this.fetchApi<CreateSessionResponse>('/api/sessions', {
       method: 'POST',
     })
     return {
       session_id: response.session_id,
-      created_at: new Date().toISOString(),
+      created_at: response.created_at || new Date().toISOString(),
     }
   }
 
@@ -82,12 +82,9 @@ class ApiClient {
     sessionId: string,
     message: string
   ): Promise<ChatResponse> {
-    const payload: SendMessageRequest = {
-      session_id: sessionId,
-      message,
-    }
+    const payload = { message }
 
-    return this.fetchApi<ChatResponse>('/chat', {
+    return this.fetchApi<ChatResponse>(`/api/sessions/${sessionId}/chat`, {
       method: 'POST',
       body: JSON.stringify(payload),
     })
@@ -97,7 +94,7 @@ class ApiClient {
    * Get list of all chat sessions
    */
   async getSessions(): Promise<Session[]> {
-    const response = await this.fetchApi<SessionListResponse>('/list-sessions')
+    const response = await this.fetchApi<SessionListResponse>('/api/sessions')
     return response.sessions
   }
 
@@ -105,7 +102,7 @@ class ApiClient {
    * Load a specific chat session with its history
    */
   async loadChat(sessionId: string): Promise<LoadChatResponse> {
-    return this.fetchApi<LoadChatResponse>(`/load-chat/${sessionId}`)
+    return this.fetchApi<LoadChatResponse>(`/api/sessions/${sessionId}`)
   }
 
   /**
@@ -113,7 +110,7 @@ class ApiClient {
    */
   async downloadTfvars(sessionId: string): Promise<Blob> {
     const response = await fetch(
-      `${this.baseUrl}/download-tfvars/${sessionId}`
+      `${this.baseUrl}/api/sessions/${sessionId}/tfvars/download`
     )
 
     if (!response.ok) {
@@ -129,6 +126,15 @@ class ApiClient {
   async getTfvarsContent(sessionId: string): Promise<string> {
     const blob = await this.downloadTfvars(sessionId)
     return blob.text()
+  }
+
+  /**
+   * Delete a session
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.fetchApi(`/api/sessions/${sessionId}`, {
+      method: 'DELETE',
+    })
   }
 }
 

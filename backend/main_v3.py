@@ -30,9 +30,22 @@ from agent_v3 import get_agent, reset_agent
 # Config
 from config_loader import get_config
 
-# Simple in-memory session storage for MVP
-# TODO: Integrate V2 database later
-_sessions_db: dict = {}
+# Database (from V2)
+from database.operations import (
+    init_database,
+    save_session_to_db,
+    load_session_from_db,
+    list_all_sessions,
+    delete_session_from_db
+)
+from models.session import ChatSession
+
+# Session Sync (AgentState <-> ChatSession)
+from utils.session_sync import (
+    agent_state_to_chat_session,
+    chat_session_to_agent_state,
+    merge_agent_state_into_session
+)
 
 # FastAPI App
 app = FastAPI(
@@ -61,9 +74,11 @@ class ChatMessage(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    response: str
+    reply: str  # Changed from 'response' to 'reply' to match frontend
     session_id: str
     tfvars_ready: bool = False
+    current_step: int = 0
+    total_steps: int = 6
 
 
 class SessionCreate(BaseModel):
@@ -79,8 +94,15 @@ class SessionResponse(BaseModel):
 # Initialize on startup
 @app.on_event("startup")
 async def startup_event():
-    """Check Ollama connection"""
+    """Initialize database and check LLM connection"""
     print("🚀 Starting SAP Deployment Assistant V3...")
+
+    # Initialize SQLite database
+    try:
+        init_database()
+        print("✅ Database initialized")
+    except Exception as e:
+        print(f"⚠️  Database initialization error: {e}")
 
     # Test LLM connection
     try:
@@ -115,21 +137,31 @@ async def health_check():
 @app.post("/api/sessions", response_model=SessionResponse)
 async def create_session(session_data: Optional[SessionCreate] = None):
     """Create new chat session"""
-    session_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4())[:8]  # Short ID wie in V2
     session_name = session_data.name if session_data else f"Session {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     created_at = datetime.now().isoformat()
 
-    # Store in memory
-    _sessions_db[session_id] = {
-        "session_id": session_id,
-        "name": session_name,
-        "created_at": created_at,
-        "messages": []
-    }
+    # Create agent and get welcome message
+    agent = get_agent(session_id)
+    welcome_message = await agent.get_welcome_message()
+
+    # Add welcome message to agent state
+    agent.state.add_message("assistant", welcome_message)
+
+    # Convert AgentState → ChatSession
+    chat_session = agent_state_to_chat_session(session_id, agent.state)
+
+    # Save to database
+    try:
+        save_session_to_db(chat_session)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
     return SessionResponse(
         session_id=session_id,
-        name=session_name,
+        name=chat_session.get_title(),
         created_at=created_at
     )
 
@@ -137,31 +169,57 @@ async def create_session(session_data: Optional[SessionCreate] = None):
 @app.get("/api/sessions")
 async def get_sessions():
     """List all sessions"""
-    sessions = list(_sessions_db.values())
-    return {"sessions": sessions}
+    try:
+        sessions = list_all_sessions()
+        return {"sessions": sessions}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
 @app.get("/api/sessions/{session_id}")
 async def get_session_details(session_id: str):
     """Get session details and messages"""
-    session = _sessions_db.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return session
+    try:
+        chat_session = load_session_from_db(session_id)
+        if not chat_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Return session data
+        return {
+            "session_id": chat_session.session_id,
+            "name": chat_session.get_title(),
+            "messages": chat_session.messages,
+            "tfvars_ready": chat_session.tfvars_ready,
+            "tfvars_content": chat_session.tfvars_content if chat_session.tfvars_ready else ""
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
 @app.delete("/api/sessions/{session_id}")
 async def delete_session_endpoint(session_id: str):
     """Delete session"""
-    if session_id not in _sessions_db:
-        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        success = delete_session_from_db(session_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Session not found")
 
-    del _sessions_db[session_id]
+        # Also reset agent
+        reset_agent(session_id)
 
-    # Also reset agent
-    reset_agent(session_id)
-
-    return {"message": "Session deleted"}
+        return {"message": "Session deleted", "status": "deleted", "session_id": session_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
 # Chat Endpoints
@@ -177,27 +235,36 @@ async def chat(session_id: str, msg: ChatMessage):
     Returns:
         Agent response + TFVARS status
     """
-    # Check if session exists
-    if session_id not in _sessions_db:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    # Get agent for session
-    agent = get_agent(session_id)
-
-    # Process message
     try:
+        # Load session from database
+        chat_session = load_session_from_db(session_id)
+        if not chat_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Get agent for session (creates new one if not in memory)
+        agent = get_agent(session_id)
+
+        # If agent state is empty, restore from database
+        if not agent.state.messages and chat_session.messages:
+            agent.state = chat_session_to_agent_state(chat_session)
+
+        # Process message
         response = await agent.process_message(msg.message)
 
-        # Save messages to session
-        _sessions_db[session_id]["messages"].append({"role": "user", "content": msg.message})
-        _sessions_db[session_id]["messages"].append({"role": "assistant", "content": response})
+        # Convert AgentState → ChatSession and save
+        updated_session = agent_state_to_chat_session(session_id, agent.state)
+        save_session_to_db(updated_session)
 
         return ChatResponse(
-            response=response,
+            reply=response,
             session_id=session_id,
-            tfvars_ready=agent.state.tfvars_ready
+            tfvars_ready=agent.state.tfvars_ready,
+            current_step=agent.state.current_step,
+            total_steps=len(agent.state.steps)
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -216,9 +283,12 @@ async def get_tfvars(session_id: str):
     if not tfvars_content:
         raise HTTPException(status_code=404, detail="TFVARS not found")
 
+    # Use SDAF-compliant filename
+    filename = agent.get_tfvars_filename()
+
     return {
         "content": tfvars_content,
-        "filename": f"sap_{session_id[:8]}.tfvars"
+        "filename": filename
     }
 
 
@@ -242,9 +312,8 @@ async def download_tfvars(session_id: str):
     temp_file.write(tfvars_content)
     temp_file.close()
 
-    # Get SID from agent state
-    sid = agent.state.user_answers.get("sap_system", {}).get("sid", session_id[:8])
-    filename = f"sap_{sid}.tfvars"
+    # Use SDAF-compliant filename
+    filename = agent.get_tfvars_filename()
 
     return FileResponse(
         temp_file.name,

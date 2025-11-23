@@ -33,6 +33,13 @@ from utils.validators import validate_sid, validate_environment, validate_networ
 
 from tfvars.generator import generate_tfvars
 
+# V2 Helper Functions
+from utils.v2_helpers import (
+    generate_sdaf_filename,
+    generate_confirmation_summary,
+    generate_final_summary
+)
+
 
 class AgentState:
     """Agent State Management"""
@@ -44,14 +51,15 @@ class AgentState:
         self.tfvars_content: Optional[str] = None
         self.tfvars_ready = False
 
-        # 6-Schritt Konversationsflow
+        # 7-Schritt Konversationsflow (wie V2)
         self.steps = [
             "environment",
             "sap_system",
             "sizing",
             "architecture",
             "network",
-            "os_selection"
+            "os_selection",
+            "confirmation"  # NEU: Bestätigung vor TFVARS Generierung
         ]
 
     def add_message(self, role: str, content: str):
@@ -161,6 +169,24 @@ Empfehle basierend auf SAP-Support."""
             is_valid, validation_msg = self._validate_data(parsed_data, current_step)
 
             if is_valid:
+                # SPECIAL CASE: Confirmation step
+                if current_step == "confirmation":
+                    if parsed_data.get("confirmed"):
+                        # User confirmed → Generate TFVARS
+                        return await self._generate_tfvars()
+                    else:
+                        # User rejected → Offer to change
+                        response = """Kein Problem! Was möchtest du ändern?
+
+Sag mir einfach welcher Wert korrigiert werden soll, z.B.:
+- "Ändere Environment auf PROD"
+- "Region soll northeurope sein"
+- "SID soll P01 sein"
+
+Oder starte einen neuen Chat um komplett von vorne zu beginnen."""
+                        self.state.add_message("assistant", response)
+                        return response
+
                 # Store data
                 self.state.user_answers[current_step] = parsed_data
 
@@ -201,6 +227,9 @@ Empfehle basierend auf SAP-Support."""
                 result = await parse_network_input(user_input)
             elif step == "os_selection":
                 result = await parse_os_input(user_input)
+            elif step == "confirmation":
+                # Confirmation step - check for yes/no
+                return self._parse_confirmation(user_input)
             else:
                 return None
 
@@ -208,6 +237,20 @@ Empfehle basierend auf SAP-Support."""
         except Exception as e:
             print(f"Parse error: {e}")
             return None
+
+    def _parse_confirmation(self, user_input: str) -> Optional[Dict[str, Any]]:
+        """Parse confirmation input (ja/nein)"""
+        user_input_lower = user_input.lower().strip()
+
+        # Check for confirmation keywords
+        if any(word in user_input_lower for word in ["ja", "yes", "confirm", "bestätigen", "korrekt", "richtig", "ok", "okay"]):
+            return {"confirmed": True}
+
+        # Check for rejection/edit request
+        elif any(word in user_input_lower for word in ["nein", "no", "ändern", "edit", "korrigieren", "falsch"]):
+            return {"confirmed": False}
+
+        return None
 
     def _validate_data(self, data: Dict[str, Any], step: str) -> Tuple[bool, str]:
         """Validate parsed data"""
@@ -237,6 +280,10 @@ Empfehle basierend auf SAP-Support."""
                     if not is_valid:
                         return False, msg
 
+            elif step == "confirmation":
+                # Confirmation step - always valid if parsed
+                return True, "OK"
+
             # Other steps: trust the parser output
             return True, "OK"
 
@@ -249,6 +296,10 @@ Empfehle basierend auf SAP-Support."""
         next_step = self.state.get_current_step()
         if next_step == "complete":
             return await self._generate_tfvars()
+
+        # SPECIAL CASE: Confirmation step → Show summary instead of asking
+        if next_step == "confirmation":
+            return generate_confirmation_summary(self.state.user_answers)
 
         # Get step-specific prompt
         system_prompt = self.step_prompts.get(next_step, "")
@@ -320,13 +371,13 @@ Frage höflich nach den fehlenden Informationen."""
             self.state.tfvars_content = tfvars_content
             self.state.tfvars_ready = True
 
-            return f"""Perfekt! Ich habe alle Informationen.
+            # Get filename
+            filename = generate_sdaf_filename(self.state.user_answers)
 
-Deine TFVARS Datei ist fertig! 🎉
+            # Return Final Summary (aus V2)
+            final_summary = generate_final_summary(self.state.user_answers)
 
-Du kannst sie jetzt herunterladen oder in der Vorschau anzeigen.
-
-Möchtest du noch etwas ändern?"""
+            return final_summary
 
         except Exception as e:
             return f"Fehler beim Generieren der TFVARS: {e}"
@@ -336,9 +387,40 @@ Möchtest du noch etwas ändern?"""
         # Agent can answer questions about the generated config
         return "Die Konfiguration ist fertig. Möchtest du etwas ändern oder hast du Fragen?"
 
+    async def get_welcome_message(self) -> str:
+        """Get welcome message for new sessions"""
+        welcome = """Willkommen beim SAP Deployment Assistant! 👋
+
+Ich bin dein persönlicher Assistent für die Erstellung von Terraform-Konfigurationen für SAP-Deployments auf Azure.
+
+**Was ich für dich tun kann:**
+- Ich führe dich durch einen strukturierten Dialog zur Erfassung aller notwendigen Informationen
+- Ich generiere automatisch eine vollständige TFVARS-Datei für das SAP Deployment Automation Framework (SDAF)
+- Du musst keine YAML oder Terraform-Syntax kennen - ich kümmere mich darum!
+
+**Der Prozess:**
+Ich werde dich durch 6 Schritte führen:
+1️⃣ **Umgebung** (Region, Deployer, Workload Zone)
+2️⃣ **SAP System** (SID, Produkt, Environment)
+3️⃣ **Sizing** (VM-Größen, Speicher)
+4️⃣ **Architektur** (HA, Deployment-Typ)
+5️⃣ **Netzwerk** (VNet, Subnets)
+6️⃣ **Betriebssystem** (OS-Typ, Version)
+
+**Lass uns starten!** 🚀
+
+Welche **Azure Region** möchtest du für dein SAP Deployment verwenden?
+(z.B. westeurope, northeurope, germanywestcentral)"""
+
+        return welcome
+
     def get_tfvars(self) -> Optional[str]:
         """Get generated TFVARS content"""
         return self.state.tfvars_content
+
+    def get_tfvars_filename(self) -> str:
+        """Get SDAF-compliant filename for TFVARS"""
+        return generate_sdaf_filename(self.state.user_answers)
 
     def reset(self):
         """Reset agent state"""

@@ -14,4 +14,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["python", "main.py"]
+# V3 Backend
+CMD ["python", "main_v3.py"]
