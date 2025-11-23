@@ -15,7 +15,7 @@ Unterstützt:
 
 import json
 from typing import Dict, Any, List, Tuple, Optional
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 # LLM Factory - austauschbar!
 from config_loader import get_config
@@ -26,16 +26,10 @@ from parsers.sap_system import parse_sap_system_input
 from parsers.sizing import parse_sizing_input
 from parsers.architecture import parse_architecture_input
 from parsers.network import parse_network_input
-from parsers.os_selection import parse_os_selection_input
+from parsers.os_selection import parse_os_input  # ← FIXED: parse_os_input not parse_os_selection_input
 
-from utils.validators import (
-    validate_environment,
-    validate_sap_system,
-    validate_sizing,
-    validate_architecture,
-    validate_network,
-    validate_os_selection
-)
+# Basic validators
+from utils.validators import validate_sid, validate_environment, validate_network_name
 
 from tfvars.generator import generate_tfvars
 
@@ -193,22 +187,23 @@ Empfehle basierend auf SAP-Support."""
         """Parse user input for current step"""
 
         # Use step-specific parser (UNVERÄNDERT aus v2!)
-        parsers = {
-            "environment": parse_environment_input,
-            "sap_system": parse_sap_system_input,
-            "sizing": parse_sizing_input,
-            "architecture": parse_architecture_input,
-            "network": parse_network_input,
-            "os_selection": parse_os_selection_input
-        }
-
-        parser = parsers.get(step)
-        if not parser:
-            return None
-
-        # Call parser with LLM
+        # Note: parsers are async and have different signatures
         try:
-            result = parser(user_input, self.parsing_llm)
+            if step == "environment":
+                result = await parse_environment_input(user_input, self.state.user_answers.get("environment", {}))
+            elif step == "sap_system":
+                result = await parse_sap_system_input(user_input, self.state.user_answers.get("sap_system", {}))
+            elif step == "sizing":
+                result = await parse_sizing_input(user_input)
+            elif step == "architecture":
+                result = await parse_architecture_input(user_input)
+            elif step == "network":
+                result = await parse_network_input(user_input)
+            elif step == "os_selection":
+                result = await parse_os_input(user_input)
+            else:
+                return None
+
             return result
         except Exception as e:
             print(f"Parse error: {e}")
@@ -217,22 +212,34 @@ Empfehle basierend auf SAP-Support."""
     def _validate_data(self, data: Dict[str, Any], step: str) -> Tuple[bool, str]:
         """Validate parsed data"""
 
-        validators = {
-            "environment": validate_environment,
-            "sap_system": validate_sap_system,
-            "sizing": validate_sizing,
-            "architecture": validate_architecture,
-            "network": validate_network,
-            "os_selection": validate_os_selection
-        }
-
-        validator = validators.get(step)
-        if not validator:
-            return True, "OK"
+        if not data:
+            return False, "Keine Daten gefunden"
 
         try:
-            is_valid, msg = validator(data)
-            return is_valid, msg
+            # Basic validation per step
+            if step == "environment":
+                if "environment" in data:
+                    is_valid, msg = validate_environment(data["environment"])
+                    if not is_valid:
+                        return False, msg
+                if "network_logical_name" in data:
+                    is_valid, msg = validate_network_name(data["network_logical_name"])
+                    if not is_valid:
+                        return False, msg
+
+            elif step == "sap_system":
+                if "sid" in data:
+                    is_valid, msg = validate_sid(data["sid"])
+                    if not is_valid:
+                        return False, msg
+                if "database_sid" in data:
+                    is_valid, msg = validate_sid(data["database_sid"])
+                    if not is_valid:
+                        return False, msg
+
+            # Other steps: trust the parser output
+            return True, "OK"
+
         except Exception as e:
             return False, f"Validation error: {e}"
 

@@ -27,18 +27,12 @@ from pydantic import BaseModel
 # Agent V3
 from agent_v3 import get_agent, reset_agent
 
-# Database (SQLite)
-from database.operations import (
-    init_database,
-    create_session as db_create_session,
-    save_message,
-    get_session,
-    list_sessions,
-    delete_session
-)
-
 # Config
 from config_loader import get_config
+
+# Simple in-memory session storage for MVP
+# TODO: Integrate V2 database later
+_sessions_db: dict = {}
 
 # FastAPI App
 app = FastAPI(
@@ -82,15 +76,11 @@ class SessionResponse(BaseModel):
     created_at: str
 
 
-# Initialize database on startup
+# Initialize on startup
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database and check Ollama connection"""
+    """Check Ollama connection"""
     print("🚀 Starting SAP Deployment Assistant V3...")
-
-    # Init database
-    init_database()
-    print("✅ Database initialized")
 
     # Test LLM connection
     try:
@@ -127,27 +117,34 @@ async def create_session(session_data: Optional[SessionCreate] = None):
     """Create new chat session"""
     session_id = str(uuid.uuid4())
     session_name = session_data.name if session_data else f"Session {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    created_at = datetime.now().isoformat()
 
-    db_create_session(session_id, session_name)
+    # Store in memory
+    _sessions_db[session_id] = {
+        "session_id": session_id,
+        "name": session_name,
+        "created_at": created_at,
+        "messages": []
+    }
 
     return SessionResponse(
         session_id=session_id,
         name=session_name,
-        created_at=datetime.now().isoformat()
+        created_at=created_at
     )
 
 
 @app.get("/api/sessions")
 async def get_sessions():
     """List all sessions"""
-    sessions = list_sessions()
+    sessions = list(_sessions_db.values())
     return {"sessions": sessions}
 
 
 @app.get("/api/sessions/{session_id}")
 async def get_session_details(session_id: str):
     """Get session details and messages"""
-    session = get_session(session_id)
+    session = _sessions_db.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
@@ -156,9 +153,10 @@ async def get_session_details(session_id: str):
 @app.delete("/api/sessions/{session_id}")
 async def delete_session_endpoint(session_id: str):
     """Delete session"""
-    success = delete_session(session_id)
-    if not success:
+    if session_id not in _sessions_db:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    del _sessions_db[session_id]
 
     # Also reset agent
     reset_agent(session_id)
@@ -180,8 +178,7 @@ async def chat(session_id: str, msg: ChatMessage):
         Agent response + TFVARS status
     """
     # Check if session exists
-    session = get_session(session_id)
-    if not session:
+    if session_id not in _sessions_db:
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Get agent for session
@@ -191,9 +188,9 @@ async def chat(session_id: str, msg: ChatMessage):
     try:
         response = await agent.process_message(msg.message)
 
-        # Save messages to DB
-        save_message(session_id, "user", msg.message)
-        save_message(session_id, "assistant", response)
+        # Save messages to session
+        _sessions_db[session_id]["messages"].append({"role": "user", "content": msg.message})
+        _sessions_db[session_id]["messages"].append({"role": "assistant", "content": response})
 
         return ChatResponse(
             response=response,
@@ -202,6 +199,8 @@ async def chat(session_id: str, msg: ChatMessage):
         )
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Agent error: {e}")
 
 
