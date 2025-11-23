@@ -19,6 +19,7 @@ import uuid
 import json
 from datetime import datetime
 from typing import List, Optional
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -47,11 +48,41 @@ from utils.session_sync import (
     merge_agent_state_into_session
 )
 
-# FastAPI App
+
+# Lifespan context manager for startup/shutdown events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database and check LLM connection on startup"""
+    print("🚀 Starting SAP Deployment Assistant V3...")
+
+    # Initialize SQLite database
+    try:
+        init_database()
+        print("✅ Database initialized")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+
+    # Test LLM connection
+    try:
+        llm = config.get_llm("default")
+        print(f"✅ LLM configured: {llm}")
+    except Exception as e:
+        print(f"⚠️  LLM configuration error: {e}")
+
+    print("✅ Ready to accept requests!")
+
+    yield
+
+    # Shutdown (cleanup if needed)
+    print("👋 Shutting down...")
+
+
+# FastAPI App with lifespan
 app = FastAPI(
     title="SAP Deployment Assistant V3",
     description="Conversational AI for SAP TFVARS generation - Local with LLM-Factory",
-    version="3.0.0"
+    version="3.0.0",
+    lifespan=lifespan
 )
 
 # Load config
@@ -89,29 +120,6 @@ class SessionResponse(BaseModel):
     session_id: str
     name: str
     created_at: str
-
-
-# Initialize on startup
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database and check LLM connection"""
-    print("🚀 Starting SAP Deployment Assistant V3...")
-
-    # Initialize SQLite database
-    try:
-        init_database()
-        print("✅ Database initialized")
-    except Exception as e:
-        print(f"⚠️  Database initialization error: {e}")
-
-    # Test LLM connection
-    try:
-        llm = config.get_llm("default")
-        print(f"✅ LLM configured: {llm}")
-    except Exception as e:
-        print(f"⚠️  LLM configuration error: {e}")
-
-    print("✅ Ready to accept requests!")
 
 
 # Health Check
