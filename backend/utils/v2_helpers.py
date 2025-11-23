@@ -69,17 +69,39 @@ def generate_sdaf_filename(user_data: Dict[str, Any]) -> str:
     - PRD-WEEU-SAP01-X00.tfvars
     - DEV-NOEU-SAP02-P01.tfvars
     """
-    env = user_data.get("environment", "DEV").upper()[:5]
+    # Defensive: ensure values are strings, not dicts
+    env = user_data.get("environment", "DEV")
+    if isinstance(env, dict):
+        env = env.get("value", "DEV") if "value" in env else "DEV"
+    env = str(env).upper()[:5]
+
     location = user_data.get("location", "westeurope")
+    if isinstance(location, dict):
+        location = location.get("value", "westeurope") if "value" in location else "westeurope"
+    location = str(location)
     region_code = get_region_code(location)
-    network = user_data.get("network_logical_name", "SAP01").upper()[:7]
-    sid = user_data.get("sid", "X00").upper()
+
+    network = user_data.get("network_logical_name", "SAP01")
+    if isinstance(network, dict):
+        network = network.get("value", "SAP01") if "value" in network else "SAP01"
+    network = str(network).upper()[:7]
+
+    sid = user_data.get("sid", "X00")
+    if isinstance(sid, dict):
+        sid = sid.get("value", "X00") if "value" in sid else "X00"
+    sid = str(sid).upper()
 
     return f"{env}-{region_code}-{network}-{sid}.tfvars"
 
 
 def generate_confirmation_summary(user_data: Dict[str, Any]) -> str:
     """Generate summary for user confirmation BEFORE generating tfvars"""
+
+    # Helper to safely get string values
+    def safe_str(value, default='N/A'):
+        if isinstance(value, dict):
+            return str(value.get("value", default))
+        return str(value) if value else default
 
     # Build server counts
     db_count = user_data.get("database_server_count", 1)
@@ -100,17 +122,17 @@ Ich habe alle Informationen gesammelt. Hier ist die Zusammenfassung:
 ### 🌍 Umgebung
 | Parameter | Wert |
 |-----------|------|
-| **Environment** | {user_data.get('environment', 'N/A')} |
-| **Azure Region** | {user_data.get('location', 'N/A')} |
-| **Netzwerkname** | {user_data.get('network_logical_name', 'N/A')} |
+| **Environment** | {safe_str(user_data.get('environment'))} |
+| **Azure Region** | {safe_str(user_data.get('location'))} |
+| **Netzwerkname** | {safe_str(user_data.get('network_logical_name'))} |
 
 ### 💾 SAP System
 | Parameter | Wert |
 |-----------|------|
-| **Application SID** | {user_data.get('sid', 'N/A')} |
-| **Database SID** | {user_data.get('database_sid', 'N/A')} |
-| **Database Platform** | {user_data.get('database_platform', 'N/A')} |
-| **Database Size** | {user_data.get('database_size', 'N/A')} |
+| **Application SID** | {safe_str(user_data.get('sid'))} |
+| **Database SID** | {safe_str(user_data.get('database_sid'))} |
+| **Database Platform** | {safe_str(user_data.get('database_platform'))} |
+| **Database Size** | {safe_str(user_data.get('database_size'))} |
 
 ### 🏗️ Architektur
 | Komponente | Anzahl | High Availability |
@@ -118,13 +140,13 @@ Ich habe alle Informationen gesammelt. Hier ist die Zusammenfassung:
 | **Database Server** | {db_count} | {ha_db} |
 | **Central Services** | {scs_count} | {ha_scs} |
 | **Application Server** | {app_count} | - |
-| **Typ** | {user_data.get('architecture_type', 'standalone').capitalize()} | - |
+| **Typ** | {safe_str(user_data.get('architecture_type', 'standalone')).capitalize()} | - |
 
 ### 🌐 Netzwerk & OS
 | Parameter | Wert |
 |-----------|------|
-| **Netzwerk-Typ** | {user_data.get('network_type', 'greenfield').capitalize()} |
-| **Betriebssystem** | {user_data.get('os_publisher', 'SUSE')} {user_data.get('os_offer', 'sles-sap-15-sp5')} |
+| **Netzwerk-Typ** | {safe_str(user_data.get('network_type', 'greenfield')).capitalize()} |
+| **Betriebssystem** | {safe_str(user_data.get('os_publisher', 'SUSE'))} {safe_str(user_data.get('os_offer', 'sles-sap-15-sp5'))} |
 
 ### 📁 Dateiname
 Die generierte Datei wird heißen: **`{filename}`**
@@ -146,6 +168,12 @@ Was sagst du? 🤔
 def generate_final_summary(user_data: Dict[str, Any]) -> str:
     """Generate final summary AFTER confirmation with download link"""
 
+    # Helper to safely get string values
+    def safe_str(value, default='N/A'):
+        if isinstance(value, dict):
+            return str(value.get("value", default))
+        return str(value) if value else default
+
     # Build server counts
     db_count = user_data.get("database_server_count", 1)
     scs_count = user_data.get("scs_server_count", 1)
@@ -165,17 +193,17 @@ Deine SAP Deployment Konfiguration ist fertig! 🎉
 ### 📋 Zusammenfassung
 | Parameter | Wert |
 |-----------|-------|
-| **Environment** | {user_data.get('environment', 'N/A')} |
-| **Azure Region** | {user_data.get('location', 'N/A')} |
-| **Network Name** | {user_data.get('network_logical_name', 'N/A')} |
+| **Environment** | {safe_str(user_data.get('environment'))} |
+| **Azure Region** | {safe_str(user_data.get('location'))} |
+| **Network Name** | {safe_str(user_data.get('network_logical_name'))} |
 
 ### 🖥️ SAP System
 | Parameter | Wert |
 |-----------|-------|
-| **Application SID** | {user_data.get('sid', 'N/A')} |
-| **Database SID** | {user_data.get('database_sid', 'N/A')} |
-| **Database Platform** | {user_data.get('database_platform', 'N/A')} |
-| **Database Size** | {user_data.get('database_size', 'N/A')} |
+| **Application SID** | {safe_str(user_data.get('sid'))} |
+| **Database SID** | {safe_str(user_data.get('database_sid'))} |
+| **Database Platform** | {safe_str(user_data.get('database_platform'))} |
+| **Database Size** | {safe_str(user_data.get('database_size'))} |
 
 ### 🏗️ Architektur
 | Komponente | Anzahl | High Availability |
@@ -183,13 +211,13 @@ Deine SAP Deployment Konfiguration ist fertig! 🎉
 | **Database Servers** | {db_count} | {ha_db} |
 | **Central Services (SCS)** | {scs_count} | {ha_scs} |
 | **Application Servers** | {app_count} | - |
-| **Deployment Type** | {user_data.get('architecture_type', 'standalone').capitalize()} | - |
+| **Deployment Type** | {safe_str(user_data.get('architecture_type', 'standalone')).capitalize()} | - |
 
 ### 🌐 Netzwerk & OS
 | Parameter | Wert |
 |-----------|-------|
-| **Network Type** | {user_data.get('network_type', 'greenfield').capitalize()} |
-| **Operating System** | {user_data.get('os_publisher', 'SUSE')} {user_data.get('os_offer', 'sles-sap-15-sp5')} |
+| **Network Type** | {safe_str(user_data.get('network_type', 'greenfield')).capitalize()} |
+| **Operating System** | {safe_str(user_data.get('os_publisher', 'SUSE'))} {safe_str(user_data.get('os_offer', 'sles-sap-15-sp5'))} |
 
 ---
 

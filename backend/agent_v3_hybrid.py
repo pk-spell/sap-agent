@@ -1,0 +1,432 @@
+"""
+SAP Deployment Agent V3 - Hybrid Approach
+==========================================
+
+Uses V2's proven conversation logic with V3's LLM-Factory.
+
+Key Changes from V2:
+- LLM is now configurable (via config.yaml)
+- Otherwise identical to V2's chat_agent_v2.py
+
+This ensures:
+- Same prompts as V2 (grouped questions, clear examples)
+- Same data structure (flat user_data)
+- Same error handling
+- But with swappable LLMs!
+"""
+
+import logging
+from typing import Dict, Any, Optional
+from dataclasses import dataclass, field
+
+# LLM Factory
+from config_loader import get_config
+
+# V2's proven parsers (UNVERÄNDERT!)
+from parsers import (
+    parse_environment_input,
+    parse_sap_system_input,
+    parse_sizing_input,
+    parse_architecture_input,
+    parse_network_input,
+    parse_os_input
+)
+
+# V2's prompts (ORIGINAL!)
+from prompts import (
+    get_prompt_message,
+    is_greeting,
+    get_greeting_response,
+    generate_confirmation_summary,
+    generate_final_summary,
+    generate_sdaf_filename
+)
+
+# TFVARS Generator
+from tfvars import generate_tfvars
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AgentState:
+    """Agent State - Compatible with V2's ChatSession"""
+    current_prompt: int = 0
+    user_data: Dict[str, Any] = field(default_factory=dict)
+    messages: list = field(default_factory=list)  # List[Tuple[str, str]]
+    tfvars_ready: bool = False
+    tfvars_content: str = ""
+
+    def add_message(self, role: str, content: str):
+        """Add message to history"""
+        self.messages.append((role, content))
+
+
+class SAPAgentV3:
+    """SAP Agent V3 - V2 Logic + V3 LLM-Factory"""
+
+    def __init__(self, config_path: str = "config.yaml"):
+        """Initialize with configurable LLM"""
+        self.config = get_config(config_path)
+
+        # Get LLMs from config
+        self.parsing_llm = self.config.get_llm("parsing")
+        self.default_llm = self.config.get_llm("default")
+
+        # Agent state
+        self.state = AgentState()
+
+    async def get_welcome_message(self) -> str:
+        """Get initial welcome message"""
+        return get_prompt_message(0)
+
+    async def process_message(self, user_input: str) -> str:
+        """
+        Process user message - IDENTICAL TO V2's process_user_message()
+
+        Args:
+            user_input: User's message
+
+        Returns:
+            Agent's response
+        """
+        # Add user message to history
+        self.state.add_message("user", user_input)
+
+        # GREETING DETECTION - respond friendly regardless of current prompt
+        if is_greeting(user_input):
+            response = get_greeting_response()
+            self.state.add_message("assistant", response)
+            return response
+
+        current_prompt = self.state.current_prompt
+
+        # Prompt 0: Environment Identity - Progressive Questioning
+        if current_prompt == 0:
+            parsed = await parse_environment_input(user_input, self.state.user_data)
+
+            # Check if parsing failed
+            if not parsed and user_input.strip():
+                from config import VALID_ENVIRONMENTS, AZURE_REGION_CODES
+                env_list = ", ".join(VALID_ENVIRONMENTS[:8])
+                region_list = ", ".join(list(AZURE_REGION_CODES.keys())[:8])
+                response = f"""Ich konnte die Eingabe nicht verstehen. Bitte gib gültige SDAF-Umgebungsinformationen an.
+
+**Gültige Umgebungen:**
+{env_list}, und mehr...
+
+**Gültige Azure Regionen:**
+{region_list}, und mehr...
+
+**Netzwerkname:**
+- Max 7 Zeichen, nur alphanumerisch
+
+**Beispiele:**
+- "DEV, westeurope, SAP01"
+- "PROD / northeurope / SAP02"
+- "QA in eastus network NET01"
+
+Versuch's nochmal!"""
+                self.state.add_message("assistant", response)
+                return response
+
+            # PROGRESSIVE: Merge with existing data
+            for key, value in parsed.items():
+                if value:
+                    self.state.user_data[key] = value
+
+            # Check what's still missing
+            has_env = self.state.user_data.get("environment")
+            has_location = self.state.user_data.get("location")
+            has_network = self.state.user_data.get("network_logical_name")
+
+            # ALL VALUES PRESENT → Proceed
+            if has_env and has_location and has_network:
+                self.state.current_prompt = 1
+                response = get_prompt_message(1, self.state.user_data)
+                self.state.add_message("assistant", response)
+                return response
+
+            # PARTIAL VALUES → Ask for missing
+            missing = []
+            if not has_env:
+                missing.append("**Environment** (DEV, PROD, QA, UAT, TEST, SBX, LAB, etc.)")
+            if not has_location:
+                missing.append("**Azure Region** (westeurope, eastus, northeurope, etc.)")
+            if not has_network:
+                missing.append("**Netzwerkname** (max 7 Zeichen, alphanumerisch)")
+
+            collected = []
+            if has_env:
+                collected.append(f"Environment: **{has_env}**")
+            if has_location:
+                collected.append(f"Region: **{has_location}**")
+            if has_network:
+                collected.append(f"Network: **{has_network}**")
+
+            response = ""
+            if collected:
+                response += "Verstanden! " + ", ".join(collected) + "\n\n"
+
+            response += f"Ich brauche noch:\n" + "\n".join(f"{i+1}. {m}" for i, m in enumerate(missing))
+            response += f"\n\n💡 Du kannst alles auf einmal oder einzeln angeben."
+
+            self.state.add_message("assistant", response)
+            return response
+
+        # Prompt 1: SAP System Identity
+        elif current_prompt == 1:
+            parsed = await parse_sap_system_input(user_input, self.state.user_data)
+
+            if not parsed and user_input.strip():
+                response = """Ich konnte die Eingabe nicht verstehen. Bitte gib gültige SAP System Informationen an.
+
+**Anforderungen:**
+- **SID**: Genau 3 Zeichen, alphanumerisch, muss mit Buchstabe beginnen
+  - ✅ Gültig: X00, P01, S15, HDB
+  - ❌ Ungültig: X, 00X, SAP (reserviert), X_0 (Sonderzeichen)
+- **Database Platform**: HANA, DB2, ORACLE, ASE, SQLSERVER, oder NONE
+
+**Beispiele:**
+- "X00, HDB, HANA"
+- "P01 ORA ORACLE"
+- "sid X00, db HDB, platform HANA"
+
+Versuch's nochmal, oder gib die Werte einzeln an!"""
+                self.state.add_message("assistant", response)
+                return response
+
+            # PROGRESSIVE: Merge
+            for key, value in parsed.items():
+                if value:
+                    self.state.user_data[key] = value
+
+            # Check missing
+            has_sid = self.state.user_data.get("sid")
+            has_db_sid = self.state.user_data.get("database_sid")
+            has_platform = self.state.user_data.get("database_platform")
+
+            # ALL PRESENT → Proceed
+            if has_sid and has_db_sid and has_platform:
+                self.state.current_prompt = 2
+                response = get_prompt_message(2, self.state.user_data)
+                self.state.add_message("assistant", response)
+                return response
+
+            # PARTIAL → Ask for missing
+            missing = []
+            if not has_sid:
+                missing.append("**SAP Application SID** (3 Zeichen, alphanumerisch, beginnt mit Buchstabe)")
+            if not has_db_sid:
+                missing.append("**Database SID** (3 Zeichen, alphanumerisch, beginnt mit Buchstabe)")
+            if not has_platform:
+                missing.append("**Database Platform** (HANA, DB2, ORACLE, ASE, SQLSERVER, NONE)")
+
+            collected = []
+            if has_sid:
+                collected.append(f"App SID: **{has_sid}**")
+            if has_db_sid:
+                collected.append(f"DB SID: **{has_db_sid}**")
+            if has_platform:
+                collected.append(f"Platform: **{has_platform}**")
+
+            response = ""
+            if collected:
+                response += "Perfekt! " + ", ".join(collected) + "\n\n"
+
+            response += "Ich brauche noch:\n" + "\n".join(f"{i+1}. {m}" for i, m in enumerate(missing))
+            response += "\n\n💡 Beispiel: 'X00, HDB, HANA'"
+
+            self.state.add_message("assistant", response)
+            return response
+
+        # Prompt 2: System Sizing
+        elif current_prompt == 2:
+            parsed = await parse_sizing_input(user_input)
+
+            database_size = parsed.get("database_size", "Demo")
+            purpose = parsed.get("purpose", "development")
+
+            self.state.user_data["database_size"] = database_size
+            self.state.user_data["app_tier_sizing_dictionary_key"] = parsed.get("app_tier_sizing", "Optimized")
+            self.state.user_data["purpose"] = purpose
+            self.state.user_data["size_description"] = database_size
+
+            # AUTO-CONFIGURE for Demo/Small
+            is_demo_or_small = any(keyword in database_size.lower() for keyword in ["demo", "s4demo"]) or \
+                              any(keyword in purpose.lower() for keyword in ["demo", "test", "testing"])
+
+            if is_demo_or_small:
+                # Set standalone, no HA defaults
+                self.state.user_data["enable_app_tier_deployment"] = False
+                self.state.user_data["application_server_count"] = 0
+                self.state.user_data["scs_server_count"] = 1
+                self.state.user_data["database_server_count"] = 1
+                self.state.user_data["database_high_availability"] = False
+                self.state.user_data["scs_high_availability"] = False
+                self.state.user_data["architecture_type"] = "standalone"
+                self.state.user_data["ha_enabled"] = False
+
+                # Skip Prompt 3 (Architecture) → Go to Prompt 4 (Network)
+                self.state.current_prompt = 4
+                response = f"""Perfekt! Da dies ein **{purpose}** System mit **{database_size}** Sizing ist, habe ich es automatisch konfiguriert als:
+
+✅ **Standalone Deployment** (alles auf einem Server)
+✅ **Keine High Availability** (single instance, kostenoptimiert)
+
+Das ist die empfohlene Konfiguration für Demo/Test/Development Umgebungen.
+
+{get_prompt_message(4, self.state.user_data)}"""
+                self.state.add_message("assistant", response)
+                return response
+            else:
+                # Normal flow: continue to Prompt 3 (Architecture)
+                self.state.current_prompt = 3
+                response = get_prompt_message(3, self.state.user_data)
+                self.state.add_message("assistant", response)
+                return response
+
+        # Prompt 3: Architecture Pattern
+        elif current_prompt == 3:
+            parsed = await parse_architecture_input(user_input)
+
+            deployment_type = parsed.get("deployment_type", "standalone")
+            ha_required = parsed.get("ha_required", False)
+            app_count = parsed.get("application_server_count", 0)
+
+            if deployment_type == "standalone":
+                self.state.user_data["enable_app_tier_deployment"] = False
+                self.state.user_data["application_server_count"] = 0
+                self.state.user_data["scs_server_count"] = 1
+                self.state.user_data["database_server_count"] = 1
+                self.state.user_data["database_high_availability"] = False
+                self.state.user_data["scs_high_availability"] = False
+            else:  # distributed
+                self.state.user_data["enable_app_tier_deployment"] = True
+                self.state.user_data["application_server_count"] = app_count if app_count > 0 else 2
+
+                if ha_required:
+                    self.state.user_data["scs_server_count"] = 2
+                    self.state.user_data["database_server_count"] = 2
+                    self.state.user_data["database_high_availability"] = True
+                    self.state.user_data["scs_high_availability"] = True
+                else:
+                    self.state.user_data["scs_server_count"] = 1
+                    self.state.user_data["database_server_count"] = 1
+                    self.state.user_data["database_high_availability"] = False
+                    self.state.user_data["scs_high_availability"] = False
+
+            self.state.user_data["architecture_type"] = deployment_type
+            self.state.user_data["ha_enabled"] = ha_required
+
+            self.state.current_prompt = 4
+            response = get_prompt_message(4, self.state.user_data)
+            self.state.add_message("assistant", response)
+            return response
+
+        # Prompt 4: Network Configuration
+        elif current_prompt == 4:
+            parsed = await parse_network_input(user_input)
+
+            self.state.user_data["network_type"] = parsed.get("network_type", "greenfield")
+
+            if parsed.get("custom_cidrs"):
+                self.state.user_data["admin_subnet"] = parsed.get("admin_subnet", "10.1.0.0/24")
+                self.state.user_data["db_subnet"] = parsed.get("db_subnet", "10.1.1.0/24")
+                self.state.user_data["app_subnet"] = parsed.get("app_subnet", "10.1.2.0/24")
+                self.state.user_data["web_subnet"] = parsed.get("web_subnet", "10.1.3.0/24")
+            else:
+                # Use defaults
+                self.state.user_data["admin_subnet"] = "10.1.0.0/24"
+                self.state.user_data["db_subnet"] = "10.1.1.0/24"
+                self.state.user_data["app_subnet"] = "10.1.2.0/24"
+                self.state.user_data["web_subnet"] = "10.1.3.0/24"
+
+            self.state.current_prompt = 5
+            response = get_prompt_message(5, self.state.user_data)
+            self.state.add_message("assistant", response)
+            return response
+
+        # Prompt 5: Operating System
+        elif current_prompt == 5:
+            parsed = await parse_os_input(user_input)
+
+            self.state.user_data["os_publisher"] = parsed.get("publisher", "SUSE")
+            self.state.user_data["os_offer"] = parsed.get("offer", "sles-sap-15-sp5")
+            self.state.user_data["os_sku"] = parsed.get("sku", "gen2")
+
+            # Move to confirmation prompt
+            self.state.current_prompt = 6
+            response = generate_confirmation_summary(self.state.user_data)
+            self.state.add_message("assistant", response)
+            return response
+
+        # Prompt 6: Confirmation
+        elif current_prompt == 6:
+            user_input_lower = user_input.lower().strip()
+
+            # Check for confirmation
+            if any(word in user_input_lower for word in ["ja", "yes", "confirm", "bestätigen", "korrekt", "richtig", "ok", "okay"]):
+                # Generate tfvars
+                self.state.tfvars_content = generate_tfvars(self.state.user_data)
+                self.state.tfvars_ready = True
+                self.state.current_prompt = 7
+
+                filename = generate_sdaf_filename(self.state.user_data)
+                response = generate_final_summary(self.state.user_data)
+                self.state.add_message("assistant", response)
+                return response
+
+            # Check for rejection
+            elif any(word in user_input_lower for word in ["nein", "no", "ändern", "edit", "korrigieren", "falsch"]):
+                response = """Kein Problem! Was möchtest du ändern?
+
+Sag mir einfach welcher Wert korrigiert werden soll, z.B.:
+- "Ändere Environment auf PROD"
+- "Region soll northeurope sein"
+- "SID soll P01 sein"
+
+Oder starte einen neuen Chat um komplett von vorne zu beginnen."""
+                self.state.add_message("assistant", response)
+                return response
+            else:
+                response = """Bitte bestätige mit **"ja"** wenn alles korrekt ist, oder sage **"nein"** wenn du etwas ändern möchtest.
+
+Du kannst auch direkt sagen was geändert werden soll, z.B. "Ändere SID auf P01"
+"""
+                self.state.add_message("assistant", response)
+                return response
+
+        else:
+            response = "Konfiguration ist abgeschlossen! Du kannst die TFVARS Datei herunterladen oder eine neue Session starten."
+            self.state.add_message("assistant", response)
+            return response
+
+    def get_tfvars(self) -> Optional[str]:
+        """Get generated TFVARS content"""
+        return self.state.tfvars_content
+
+    def get_tfvars_filename(self) -> str:
+        """Get SDAF-compliant filename"""
+        return generate_sdaf_filename(self.state.user_data)
+
+    def reset(self):
+        """Reset agent state"""
+        self.state = AgentState()
+
+
+# Singleton instances (per session)
+_agent_instances: Dict[str, SAPAgentV3] = {}
+
+
+def get_agent(session_id: str) -> SAPAgentV3:
+    """Get or create agent instance for session"""
+    if session_id not in _agent_instances:
+        _agent_instances[session_id] = SAPAgentV3()
+    return _agent_instances[session_id]
+
+
+def reset_agent(session_id: str):
+    """Reset agent for session"""
+    if session_id in _agent_instances:
+        _agent_instances[session_id].reset()

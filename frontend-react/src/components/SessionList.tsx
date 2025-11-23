@@ -11,7 +11,7 @@ import {
   Text,
   Spinner,
 } from '@fluentui/react-components'
-import { Chat20Regular, CheckmarkCircle20Regular } from '@fluentui/react-icons'
+import { Chat20Regular, CheckmarkCircle20Regular, Delete20Regular } from '@fluentui/react-icons'
 import { apiClient } from '../api/client'
 import type { Session } from '../types'
 
@@ -29,12 +29,32 @@ const useStyles = makeStyles({
     width: '100%',
     justifyContent: 'flex-start',
     padding: '12px',
+    paddingRight: '40px', // Space for delete button
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-start',
     gap: '4px',
     textAlign: 'left',
     position: 'relative',
+    '&:hover .delete-button': {
+      opacity: 1,
+    },
+  },
+  sessionItemWrapper: {
+    position: 'relative',
+    width: '100%',
+  },
+  deleteButton: {
+    position: 'absolute',
+    right: '8px',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    opacity: 0,
+    transition: 'opacity 0.2s ease-in-out',
+    minWidth: '28px',
+    height: '28px',
+    padding: '4px',
+    zIndex: 10,
   },
   activeSession: {
     backgroundColor: tokens.colorBrandBackground2,
@@ -75,6 +95,7 @@ export default function SessionList({
   const styles = useStyles()
   const [sessions, setSessions] = useState<Session[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [hoveredSession, setHoveredSession] = useState<string | null>(null)
 
   useEffect(() => {
     loadSessions()
@@ -131,6 +152,29 @@ export default function SessionList({
     return `Session ${date} (${shortId})`
   }
 
+  const handleDeleteSession = async (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation() // Prevent session selection when clicking delete
+
+    if (!confirm('Möchtest du diese Session wirklich löschen?')) {
+      return
+    }
+
+    try {
+      await apiClient.deleteSession(sessionId)
+      // Remove from local state
+      setSessions(sessions.filter(s => s.session_id !== sessionId))
+
+      // If we deleted the current session, notify parent
+      if (sessionId === currentSessionId) {
+        // Parent should handle creating a new session
+        onSelectSession('')
+      }
+    } catch (error) {
+      console.error('Failed to delete session:', error)
+      alert('Fehler beim Löschen der Session')
+    }
+  }
+
   if (isLoading) {
     return (
       <div className={styles.loadingContainer}>
@@ -155,26 +199,43 @@ export default function SessionList({
 
       {sessions.map((session) => {
         const isActive = session.session_id === currentSessionId
+        const isHovered = hoveredSession === session.session_id
 
         return (
-          <Button
+          <div
             key={session.session_id}
-            appearance="subtle"
-            className={`${styles.sessionItem} ${
-              isActive ? styles.activeSession : ''
-            }`}
-            onClick={() => onSelectSession(session.session_id)}
-            icon={
-              isActive ? <CheckmarkCircle20Regular /> : <Chat20Regular />
-            }
+            className={styles.sessionItemWrapper}
+            onMouseEnter={() => setHoveredSession(session.session_id)}
+            onMouseLeave={() => setHoveredSession(null)}
           >
-            <Text className={styles.sessionName} size={300}>
-              {getSessionName(session)}
-            </Text>
-            <Text className={styles.sessionDate}>
-              {formatDate(session.created_at)}
-            </Text>
-          </Button>
+            <Button
+              appearance="subtle"
+              className={`${styles.sessionItem} ${
+                isActive ? styles.activeSession : ''
+              }`}
+              onClick={() => onSelectSession(session.session_id)}
+              icon={
+                isActive ? <CheckmarkCircle20Regular /> : <Chat20Regular />
+              }
+            >
+              <Text className={styles.sessionName} size={300}>
+                {getSessionName(session)}
+              </Text>
+              <Text className={styles.sessionDate}>
+                {formatDate(session.created_at)}
+              </Text>
+            </Button>
+
+            {isHovered && (
+              <Button
+                appearance="subtle"
+                className={styles.deleteButton}
+                icon={<Delete20Regular />}
+                onClick={(e) => handleDeleteSession(session.session_id, e)}
+                aria-label="Session löschen"
+              />
+            )}
+          </div>
         )
       })}
     </div>

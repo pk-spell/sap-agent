@@ -40,6 +40,13 @@ from utils.v2_helpers import (
     generate_final_summary
 )
 
+# V2 Prompts (ORIGINAL!)
+from prompts import (
+    get_prompt_message,
+    is_greeting,
+    get_greeting_response
+)
+
 
 class AgentState:
     """Agent State Management"""

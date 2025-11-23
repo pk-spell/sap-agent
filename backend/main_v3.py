@@ -24,8 +24,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-# Agent V3
-from agent_v3 import get_agent, reset_agent
+# Agent V3 Hybrid (V2 Logic + V3 LLM-Factory)
+from agent_v3_hybrid import get_agent, reset_agent
 
 # Config
 from config_loader import get_config
