@@ -1,0 +1,94 @@
+# LLM Configuration
+# Einfach provider/model ändern, um zwischen LLMs zu wechseln!
+
+llm:
+  # Default LLM (für alle Tasks)
+  default:
+    provider: "ollama"           # ollama, claude, openai, groq
+    model: "qwen2.5:7b"          # Model name/ID
+    temperature: 0.7
+    max_tokens: 2000
+
+  # Task-spezifische LLMs (optional)
+  # Wenn nicht definiert, wird default verwendet
+  tasks:
+    parsing:
+      provider: "ollama"
+      model: "qwen2.5:7b"        # Schnell für Parsing
+      temperature: 0.3            # Deterministisch
+
+    validation:
+      provider: "ollama"
+      model: "qwen2.5:7b"
+      temperature: 0.1            # Sehr deterministisch
+
+    generation:
+      provider: "ollama"
+      model: "llama3.1:8b"        # Bessere Qualität für TFVARS
+      temperature: 0.5
+
+# Beispiele für andere Provider (auskommentiert):
+
+# Claude API (Anthropic)
+# llm:
+#   default:
+#     provider: "claude"
+#     model: "claude-3-5-sonnet-20241022"
+#     api_key: "${CLAUDE_API_KEY}"  # Aus Umgebungsvariable
+#     temperature: 0.7
+#     max_tokens: 4000
+
+# OpenAI GPT-4
+# llm:
+#   default:
+#     provider: "openai"
+#     model: "gpt-4-turbo"
+#     api_key: "${OPENAI_API_KEY}"
+#     temperature: 0.7
+#     max_tokens: 4000
+
+# Groq (schnell & billig)
+# llm:
+#   default:
+#     provider: "groq"
+#     model: "llama-3.1-70b-versatile"
+#     api_key: "${GROQ_API_KEY}"
+#     temperature: 0.7
+#     max_tokens: 2000
+
+# Multi-LLM Setup (verschiedene LLMs für verschiedene Tasks)
+# llm:
+#   default:
+#     provider: "ollama"
+#     model: "qwen2.5:7b"
+#   tasks:
+#     parsing:
+#       provider: "ollama"        # Lokal & schnell
+#       model: "qwen2.5:7b"
+#     validation:
+#       provider: "claude"        # Präzise
+#       model: "claude-3-5-sonnet-20241022"
+#       api_key: "${CLAUDE_API_KEY}"
+#     generation:
+#       provider: "openai"        # Beste Qualität
+#       model: "gpt-4-turbo"
+#       api_key: "${OPENAI_API_KEY}"
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 8000
+  reload: true  # Auto-reload in development
+
+# Database
+database:
+  type: "sqlite"
+  path: "data/chat_history.db"
+
+# CORS (für React Frontend)
+cors:
+  origins:
+    - "http://localhost:5173"
+    - "http://localhost:3000"
+  allow_methods: ["*"]
+  allow_headers: ["*"]

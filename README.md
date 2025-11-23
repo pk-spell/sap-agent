@@ -1,100 +1,60 @@
-# 🤖 SAP Deployment Automation Assistant
+# SAP Deployment Automation Assistant
 
-> AI-powered conversational tool for generating Terraform variable files (tfvars) for SAP deployments on Azure using SDAF.
+Conversational AI agent that generates Terraform variable files (tfvars) for SAP deployments on Azure using the SAP Deployment Automation Framework (SDAF).
 
-[![Status](https://img.shields.io/badge/Status-Production--Ready-success)]()
-[![Version](https://img.shields.io/badge/Version-2.0-blue)]()
-[![Python](https://img.shields.io/badge/Python-3.11-blue)]()
+## Current Version: V2 (Streamlit + FastAPI)
 
-## 🚀 Quick Start
+**Tech Stack:**
+- Backend: FastAPI + LangChain + Ollama
+- Frontend: Streamlit
+- Database: SQLite
+
+## Quick Start
 
 ```bash
-# 1. Ensure Ollama is running with llama3.1:8b
-ollama run llama3.1:8b
-
-# 2. Start the application
+# Start all services
 docker compose up --build
 
-# 3. Open your browser
-# http://localhost:8501
+# Access frontend
+open http://localhost:8501
 ```
 
-## ✨ Features
+For detailed instructions, see [docs/QUICKSTART_V2.md](./docs/QUICKSTART_V2.md)
 
-- 🎯 **Interactive Widgets** - Form-based input for key configuration steps
-- 💬 **Natural Language** - Chat interface with LLM-powered parsing
-- 🎨 **Smart Defaults** - 180+ SDAF parameters auto-filled
-- 📊 **46 Sizing Options** - From demo systems to 4TB+ production workloads
-- 💾 **Session Management** - Save, switch, and resume configurations
-- ⚡ **Auto-Configuration** - Demo/Test systems configured automatically
+## Documentation
 
-## 🛠️ Tech Stack
+- **[docs/](./docs/)** - All documentation
+- **[docs/migration-plans/](./docs/migration-plans/)** - Migration to React + Azure AI Foundry
+- **[PROJECT.md](./PROJECT.md)** - Detailed project architecture
 
-**Frontend:** Streamlit | **Backend:** FastAPI + LangChain + Ollama
-**Database:** SQLite | **LLM:** llama3.1:8b | **Deployment:** Docker Compose
+## Planned Migration: React + Azure AI Foundry
 
-## 📖 Documentation
+The next major version will migrate to:
+- **Frontend:** React + TypeScript + Fluent UI
+- **Backend:** Azure Functions + Azure AI Foundry
+- **LLM:** Azure OpenAI (GPT-4)
 
-**For detailed documentation, see [PROJECT.md](./PROJECT.md)**
+See **[docs/migration-plans/AZURE_AI_MIGRATION_PLAN.md](./docs/migration-plans/AZURE_AI_MIGRATION_PLAN.md)** for details.
 
-Includes:
-- Full architecture overview
-- API documentation
-- Database schema
-- Development workflow
-- Known issues & TODOs
-- Code structure guide
-
-## 🏗️ Project Structure
+## Repository Structure
 
 ```
 sap-agent/
-├── frontend/          # Streamlit UI (fully refactored)
-│   ├── components/    # Widgets, sidebar
-│   ├── api/           # Backend client
-│   └── pages/         # Chat interface
-├── backend/           # FastAPI (partially refactored)
-│   ├── models/        # Data models
-│   ├── database/      # SQLite operations
-│   └── utils/         # Helpers
-├── templates/         # Jinja2 templates + defaults
-└── data/              # SQLite database
+├── backend/              # FastAPI backend (V2)
+│   ├── main_v2.py       # Entry point
+│   ├── chat_agent_v2.py # Core agent logic
+│   ├── parsers/         # Input parsers (KEEP for migration!)
+│   ├── utils/           # Validators (KEEP!)
+│   └── tfvars/          # TFVARS generator (KEEP!)
+├── frontend/            # Streamlit frontend (V2)
+│   ├── pages/chat.py    # Main chat UI
+│   └── components/      # UI components
+├── templates/           # Jinja2 templates
+├── docs/                # All documentation
+├── _archive/            # Old code (reference only)
+└── data/                # SQLite database
 ```
 
-## 🎯 Current Status
+## Development
 
-### ✅ Completed
-- Interactive widgets for Environment & SAP System config
-- Context-aware parsing (no more loops!)
-- Auto-configuration for Demo/Test scenarios
-- Session management with persistence
-- Frontend fully refactored (modular components)
-
-### 🔄 In Progress
-- Backend refactoring (extracting parsers, prompts, tfvars)
-
-## 🐛 Known Issues
-
-**All critical bugs fixed!** See [PROJECT.md](./PROJECT.md#known-issues--todos) for details.
-
-## 🤝 For Other AI Assistants
-
-This project is designed to be AI-assistant friendly:
-- **Complete documentation** in PROJECT.md
-- **Modular architecture** with clear separation
-- **Type hints** and docstrings throughout
-- **Consistent code style** with logging
-
-If you're Gemini, Codex, or another AI helping with this project:
-1. Read [PROJECT.md](./PROJECT.md) first
-2. Check current status and TODOs
-3. Follow existing patterns
-4. Update documentation when making changes
-
-## 📝 License
-
-Built with Claude Code (Anthropic) | November 2025
-
----
-
-**Need help?** Check [PROJECT.md](./PROJECT.md) for detailed documentation.
+See [CLAUDE.md](./CLAUDE.md) for development guidelines and architecture details.
