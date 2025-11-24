@@ -12,10 +12,22 @@ from langchain_ollama import OllamaLLM
 # PATHS
 # ============================================================================
 
-DB_PATH = Path("/app/data/chat_sessions_v2.db")
-TEMPLATES_DIR = Path("/app/templates")
+# Auto-detect environment (Docker vs local)
+import os
+if os.path.exists("/app"):
+    # Docker environment
+    BASE_DIR = Path("/app")
+else:
+    # Local development
+    BASE_DIR = Path(__file__).parent
+
+DB_PATH = BASE_DIR / "data" / "chat_sessions_v2.db"
+TEMPLATES_DIR = BASE_DIR / "templates"
 EASY_DEFAULTS_PATH = TEMPLATES_DIR / "easy_defaults.yaml"
 TFVARS_TEMPLATE_PATH = TEMPLATES_DIR / "sap.tfvars.j2"
+
+# Ensure data directory exists
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # ============================================================================
 # LLM CONFIGURATION
