@@ -76,6 +76,7 @@ export default function ChatWindow({
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [loadingSession, setLoadingSession] = useState(true)
+  const [tfvarsAdded, setTfvarsAdded] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom when new messages arrive
@@ -89,6 +90,7 @@ export default function ChatWindow({
 
   // Load session history when sessionId changes
   useEffect(() => {
+    setTfvarsAdded(false) // Reset on session change
     loadSessionHistory()
   }, [sessionId])
 
@@ -98,10 +100,11 @@ export default function ChatWindow({
       const data = await apiClient.loadChat(sessionId)
       setMessages(data.messages || [])
 
-      // If TFVARS already ready, notify parent
+      // If TFVARS already ready, notify parent and add download message
       if (data.tfvars_ready) {
         onTfvarsReady?.()
         onProgress?.(6, 6) // Assuming 6 total steps
+        setTfvarsAdded(true) // Mark as added so we don't add it again
       }
     } catch (error) {
       console.error('Failed to load session:', error)
@@ -152,9 +155,18 @@ export default function ChatWindow({
         onProgress?.(response.current_step, response.total_steps)
       }
 
-      // Notify if TFVARS ready
-      if (response.tfvars_ready) {
+      // Notify if TFVARS ready and add download message
+      if (response.tfvars_ready && !tfvarsAdded) {
         onTfvarsReady?.()
+        setTfvarsAdded(true)
+
+        // Add download message to chat
+        const downloadMessage: Message = {
+          role: 'assistant',
+          content: '__TFVARS_DOWNLOAD__', // Special marker for ChatMessage component
+          timestamp: new Date().toISOString(),
+        }
+        setMessages((prev) => [...prev, downloadMessage])
       }
     } catch (error) {
       console.error('Failed to send message:', error)
@@ -201,7 +213,7 @@ export default function ChatWindow({
         ) : (
           <>
             {messages.map((message, index) => (
-              <ChatMessage key={index} message={message} />
+              <ChatMessage key={index} message={message} sessionId={sessionId} />
             ))}
 
             {isLoading && (

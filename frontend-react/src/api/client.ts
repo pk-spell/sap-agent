@@ -108,8 +108,9 @@ class ApiClient {
 
   /**
    * Download TFVARS file for a session
+   * Returns blob and filename from Content-Disposition header
    */
-  async downloadTfvars(sessionId: string): Promise<Blob> {
+  async downloadTfvars(sessionId: string): Promise<{ blob: Blob; filename: string }> {
     const response = await fetch(
       `${this.baseUrl}/api/sessions/${sessionId}/tfvars/download`
     )
@@ -118,7 +119,20 @@ class ApiClient {
       throw new Error(`Failed to download TFVARS: ${response.statusText}`)
     }
 
-    return response.blob()
+    const blob = await response.blob()
+
+    // Extract filename from Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition')
+    let filename = `sap-deployment-${sessionId.slice(0, 8)}.tfvars` // Fallback
+
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?(.+)"?/)
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1]
+      }
+    }
+
+    return { blob, filename }
   }
 
   /**

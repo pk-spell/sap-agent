@@ -77,6 +77,24 @@ export default function App() {
     }
   }
 
+  const handleSelectSession = async (newSessionId: string) => {
+    // Reset state when switching sessions
+    setSessionId(newSessionId)
+    setTfvarsReady(false)
+    setProgress(0)
+
+    // Check if the selected session has tfvars ready
+    try {
+      const data = await apiClient.loadChat(newSessionId)
+      if (data.tfvars_ready) {
+        setTfvarsReady(true)
+        setProgress(100)
+      }
+    } catch (error) {
+      console.error('Failed to load session state:', error)
+    }
+  }
+
   const handleProgress = (step: number, total: number) => {
     setProgress((step / total) * 100)
   }
@@ -90,11 +108,11 @@ export default function App() {
     if (!sessionId) return
 
     try {
-      const blob = await apiClient.downloadTfvars(sessionId)
+      const { blob, filename } = await apiClient.downloadTfvars(sessionId)
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `sap_${sessionId.slice(0, 8)}.tfvars`
+      a.download = filename // Use filename from backend
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -121,7 +139,7 @@ export default function App() {
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <SessionList
             currentSessionId={sessionId}
-            onSelectSession={setSessionId}
+            onSelectSession={handleSelectSession}
           />
         </div>
 
