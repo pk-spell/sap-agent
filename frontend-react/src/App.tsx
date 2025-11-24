@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   makeStyles,
   tokens,
@@ -7,6 +7,12 @@ import {
   CardHeader,
   Text,
   ProgressBar,
+  Dialog,
+  DialogSurface,
+  DialogTitle,
+  DialogBody,
+  DialogActions,
+  DialogContent,
 } from '@fluentui/react-components'
 import { Chat24Regular, Document24Regular } from '@fluentui/react-icons'
 import ChatWindow from './components/ChatWindow'
@@ -58,58 +64,47 @@ const useStyles = makeStyles({
 export default function App() {
   const styles = useStyles()
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [tfvarsReady, setTfvarsReady] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [creatingSession, setCreatingSession] = useState(false)
+  const [sessionRefreshKey, setSessionRefreshKey] = useState(0)
+  const creatingSessionRef = useRef(false)
 
   useEffect(() => {
     // Create initial session (with guard to prevent double-creation in React Strict Mode)
-    let mounted = true
-
-    const initSession = async () => {
-      if (mounted && !sessionId && !creatingSession) {
-        await createNewSession()
-      }
-    }
-
-    initSession()
-
-    return () => {
-      mounted = false
+    if (!creatingSessionRef.current && !sessionId) {
+      createNewSession()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const createNewSession = async () => {
-    // Prevent multiple simultaneous session creations
-    if (creatingSession) {
+    // Prevent multiple simultaneous session creations using ref
+    if (creatingSessionRef.current) {
       console.log('Session creation already in progress, skipping...')
       return
     }
 
-    setCreatingSession(true)
+    creatingSessionRef.current = true
     try {
       const session = await apiClient.createSession()
       setSessionId(session.session_id)
-      setTfvarsReady(false)
       setProgress(0)
+      // Trigger SessionList refresh
+      setSessionRefreshKey(prev => prev + 1)
     } catch (error) {
       console.error('Failed to create session:', error)
     } finally {
-      setCreatingSession(false)
+      creatingSessionRef.current = false
     }
   }
 
   const handleSelectSession = async (newSessionId: string) => {
     // Reset state when switching sessions
     setSessionId(newSessionId)
-    setTfvarsReady(false)
     setProgress(0)
 
     // Check if the selected session has tfvars ready
     try {
       const data = await apiClient.loadChat(newSessionId)
       if (data.tfvars_ready) {
-        setTfvarsReady(true)
         setProgress(100)
       }
     } catch (error) {
@@ -122,11 +117,26 @@ export default function App() {
   }
 
   const handleTfvarsReady = () => {
-    setTfvarsReady(true)
     setProgress(100)
   }
 
-  const handleDownloadTfvars = async () => {
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewContent, setPreviewContent] = useState('')
+
+  const handlePreviewTfvars = async () => {
+    if (!sessionId) return
+
+    try {
+      const content = await apiClient.getTfvarsContent(sessionId)
+      setPreviewContent(content)
+      setPreviewOpen(true)
+    } catch (error) {
+      console.error('Preview failed:', error)
+      alert('Failed to load preview')
+    }
+  }
+
+  const handleDownloadFromPreview = async () => {
     if (!sessionId) return
 
     try {
@@ -134,7 +144,7 @@ export default function App() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = filename // Use filename from backend
+      a.download = filename
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -160,6 +170,7 @@ export default function App() {
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <SessionList
+            key={sessionRefreshKey}
             currentSessionId={sessionId}
             onSelectSession={handleSelectSession}
           />
@@ -170,10 +181,10 @@ export default function App() {
             appearance="primary"
             icon={<Chat24Regular />}
             onClick={createNewSession}
-            disabled={creatingSession}
+            disabled={creatingSessionRef.current}
             style={{ width: '100%' }}
           >
-            {creatingSession ? 'Erstelle Session...' : 'Neue Session'}
+            New Session
           </Button>
         </div>
       </div>
@@ -183,16 +194,16 @@ export default function App() {
         {/* Header */}
         <div className={styles.header}>
           <Text size={500} weight="semibold">
-            SAP Deployment Konfiguration
+            SAP Deployment Configuration
           </Text>
 
-          {tfvarsReady && (
+          {sessionId && progress > 0 && (
             <Button
-              appearance="primary"
+              appearance="secondary"
               icon={<Document24Regular />}
-              onClick={handleDownloadTfvars}
+              onClick={handlePreviewTfvars}
             >
-              TFVARS Herunterladen
+              Preview TFVARS
             </Button>
           )}
         </div>
@@ -201,7 +212,7 @@ export default function App() {
         {progress > 0 && progress < 100 && (
           <div className={styles.progressContainer}>
             <Text size={300} style={{ marginBottom: '8px' }}>
-              Fortschritt: {Math.round(progress)}%
+              Progress: {Math.round(progress)}%
             </Text>
             <ProgressBar value={progress / 100} />
           </div>
@@ -213,7 +224,7 @@ export default function App() {
             style={{ backgroundColor: tokens.colorPaletteGreenBackground2 }}
           >
             <Text size={300} weight="semibold">
-              ✅ Konfiguration abgeschlossen!
+              ✅ Configuration completed!
             </Text>
           </div>
         )}
@@ -236,11 +247,44 @@ export default function App() {
                 height: '100%',
               }}
             >
-              <Text>Lade Session...</Text>
+              <Text>Loading Session...</Text>
             </div>
           )}
         </div>
       </div>
+
+      {/* Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={(_, data) => setPreviewOpen(data.open)}>
+        <DialogSurface style={{ maxWidth: '800px', maxHeight: '80vh' }}>
+          <DialogBody>
+            <DialogTitle>TFVARS Preview</DialogTitle>
+            <DialogContent>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: '12px',
+                  whiteSpace: 'pre',
+                  overflow: 'auto',
+                  maxHeight: '500px',
+                  padding: '12px',
+                  backgroundColor: tokens.colorNeutralBackground2,
+                  borderRadius: '4px',
+                }}
+              >
+                {previewContent || 'Loading...'}
+              </div>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={() => setPreviewOpen(false)}>
+                Close
+              </Button>
+              <Button appearance="primary" icon={<Document24Regular />} onClick={handleDownloadFromPreview}>
+                Download
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </div>
   )
 }

@@ -102,7 +102,7 @@ export default function ChatMessage({ message, sessionId }: ChatMessageProps) {
       document.body.removeChild(a)
     } catch (error) {
       console.error('Download failed:', error)
-      alert('Fehler beim Download der TFVARS Datei')
+      alert('Failed to download TFVARS file')
     }
   }
 
@@ -116,7 +116,7 @@ export default function ChatMessage({ message, sessionId }: ChatMessageProps) {
       setPreviewOpen(true)
     } catch (error) {
       console.error('Preview failed:', error)
-      alert('Fehler beim Laden der Vorschau')
+      alert('Failed to load preview')
     } finally {
       setLoadingPreview(false)
     }
@@ -143,10 +143,10 @@ export default function ChatMessage({ message, sessionId }: ChatMessageProps) {
         {isTfvarsDownload ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <Text weight="semibold" size={400}>
-              ✅ Konfiguration abgeschlossen!
+              ✅ Configuration completed!
             </Text>
             <Text>
-              Deine TFVARS-Datei ist bereit. Du kannst sie herunterladen oder eine Vorschau anzeigen.
+              Your TFVARS file is ready. You can download it or view a preview.
             </Text>
             <div className={styles.buttonGroup}>
               <Button
@@ -155,14 +155,14 @@ export default function ChatMessage({ message, sessionId }: ChatMessageProps) {
                 onClick={handlePreview}
                 disabled={loadingPreview}
               >
-                {loadingPreview ? 'Lade...' : 'Vorschau'}
+                {loadingPreview ? 'Loading...' : 'Preview'}
               </Button>
               <Button
                 appearance="primary"
                 icon={<Document24Regular />}
                 onClick={handleDownload}
               >
-                Herunterladen
+                Download
               </Button>
             </div>
 
@@ -170,7 +170,7 @@ export default function ChatMessage({ message, sessionId }: ChatMessageProps) {
             <Dialog open={previewOpen} onOpenChange={(_, data) => setPreviewOpen(data.open)}>
               <DialogSurface>
                 <DialogBody>
-                  <DialogTitle>TFVARS Vorschau</DialogTitle>
+                  <DialogTitle>TFVARS Preview</DialogTitle>
                   <DialogContent>
                     <div className={styles.previewContent}>
                       {previewContent}
@@ -178,10 +178,10 @@ export default function ChatMessage({ message, sessionId }: ChatMessageProps) {
                   </DialogContent>
                   <DialogActions>
                     <Button appearance="secondary" onClick={() => setPreviewOpen(false)}>
-                      Schließen
+                      Close
                     </Button>
                     <Button appearance="primary" icon={<Document24Regular />} onClick={handleDownload}>
-                      Herunterladen
+                      Download
                     </Button>
                   </DialogActions>
                 </DialogBody>

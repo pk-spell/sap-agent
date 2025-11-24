@@ -78,6 +78,7 @@ export default function ChatWindow({
   const [loadingSession, setLoadingSession] = useState(true)
   const [tfvarsAdded, setTfvarsAdded] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -113,7 +114,7 @@ export default function ChatWindow({
         {
           role: 'assistant',
           content:
-            'Willkommen beim SAP Deployment Assistant! Ich helfe dir, eine Terraform-Konfiguration für deine SAP-Umgebung zu erstellen.\n\nLass uns mit der Umgebungskonfiguration beginnen. Welche Azure Region möchtest du verwenden? (z.B. westeurope, northeurope)',
+            'Welcome to the SAP Deployment Assistant! I\'ll help you create a Terraform configuration for your SAP environment.\n\nLet\'s start with the environment configuration. Which Azure Region would you like to use? (e.g., westeurope, northeurope)',
           timestamp: new Date().toISOString(),
         },
       ])
@@ -135,6 +136,11 @@ export default function ChatWindow({
     setMessages((prev) => [...prev, userMessage])
     setInput('')
     setIsLoading(true)
+
+    // Keep focus on input after sending
+    setTimeout(() => {
+      inputRef.current?.focus()
+    }, 0)
 
     try {
       const response: ChatResponse = await apiClient.sendMessage(
@@ -174,7 +180,7 @@ export default function ChatWindow({
       // Add error message
       const errorMessage: Message = {
         role: 'assistant',
-        content: `Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`,
+        content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: new Date().toISOString(),
       }
       setMessages((prev) => [...prev, errorMessage])
@@ -194,7 +200,7 @@ export default function ChatWindow({
     return (
       <div className={styles.emptyState}>
         <Spinner size="large" />
-        <Text>Session wird geladen...</Text>
+        <Text>Loading session...</Text>
       </div>
     )
   }
@@ -205,9 +211,9 @@ export default function ChatWindow({
       <div className={styles.messagesContainer}>
         {messages.length === 0 ? (
           <div className={styles.emptyState}>
-            <Text size={500}>Keine Nachrichten</Text>
+            <Text size={500}>No messages</Text>
             <Text size={300}>
-              Starte eine Konversation, um deine SAP-Konfiguration zu erstellen
+              Start a conversation to create your SAP configuration
             </Text>
           </div>
         ) : (
@@ -219,7 +225,7 @@ export default function ChatWindow({
             {isLoading && (
               <div className={styles.loadingIndicator}>
                 <Spinner size="small" />
-                <Text size={300}>Assistent antwortet...</Text>
+                <Text size={300}>Assistant is responding...</Text>
               </div>
             )}
 
@@ -232,12 +238,12 @@ export default function ChatWindow({
       {/* Input */}
       <div className={styles.inputContainer}>
         <Input
+          ref={inputRef}
           className={styles.input}
-          placeholder="Nachricht eingeben... (Enter zum Senden, Shift+Enter für neue Zeile)"
+          placeholder="Enter your message... (Enter to send, Shift+Enter for new line)"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyPress}
-          disabled={isLoading}
           size="large"
         />
         <Button
@@ -247,7 +253,7 @@ export default function ChatWindow({
           disabled={!input.trim() || isLoading}
           size="large"
         >
-          Senden
+          Send
         </Button>
       </div>
     </div>

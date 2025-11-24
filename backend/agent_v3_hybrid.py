@@ -110,23 +110,23 @@ class SAPAgentV3:
                 from config import VALID_ENVIRONMENTS, AZURE_REGION_CODES
                 env_list = ", ".join(VALID_ENVIRONMENTS[:8])
                 region_list = ", ".join(list(AZURE_REGION_CODES.keys())[:8])
-                response = f"""Ich konnte die Eingabe nicht verstehen. Bitte gib gültige SDAF-Umgebungsinformationen an.
+                response = f"""I couldn't understand the input. Please provide valid SDAF environment information.
 
-**Gültige Umgebungen:**
-{env_list}, und mehr...
+**Valid Environments:**
+{env_list}, and more...
 
-**Gültige Azure Regionen:**
-{region_list}, und mehr...
+**Valid Azure Regions:**
+{region_list}, and more...
 
-**Netzwerkname:**
-- Max 7 Zeichen, nur alphanumerisch
+**Network Name:**
+- Max 7 characters, alphanumeric only
 
-**Beispiele:**
+**Examples:**
 - "DEV, westeurope, SAP01"
 - "PROD / northeurope / SAP02"
 - "QA in eastus network NET01"
 
-Versuch's nochmal!"""
+Please try again!"""
                 self.state.add_message("assistant", response)
                 return response
 
@@ -166,10 +166,10 @@ Versuch's nochmal!"""
 
             response = ""
             if collected:
-                response += "Verstanden! " + ", ".join(collected) + "\n\n"
+                response += "Got it! " + ", ".join(collected) + "\n\n"
 
-            response += f"Ich brauche noch:\n" + "\n".join(f"{i+1}. {m}" for i, m in enumerate(missing))
-            response += f"\n\n💡 Du kannst alles auf einmal oder einzeln angeben."
+            response += f"I still need:\n" + "\n".join(f"{i+1}. {m}" for i, m in enumerate(missing))
+            response += f"\n\n💡 You can provide everything at once or one at a time."
 
             self.state.add_message("assistant", response)
             return response
@@ -179,7 +179,7 @@ Versuch's nochmal!"""
             parsed = await parse_sap_system_input(user_input, self.state.user_data)
 
             if not parsed and user_input.strip():
-                response = """Ich konnte die Eingabe nicht verstehen. Bitte gib gültige SAP System Informationen an.
+                response = """I couldn't understand the input. Please provide valid SAP System information.
 
 **Anforderungen:**
 - **SID**: Genau 3 Zeichen, alphanumerisch, muss mit Buchstabe beginnen
@@ -390,9 +390,9 @@ Oder starte einen neuen Chat um komplett von vorne zu beginnen."""
                 self.state.add_message("assistant", response)
                 return response
             else:
-                response = """Bitte bestätige mit **"ja"** wenn alles korrekt ist, oder sage **"nein"** wenn du etwas ändern möchtest.
+                response = """Please confirm with **"yes"** if everything is correct, or say **"no"** if you want to change something.
 
-Du kannst auch direkt sagen was geändert werden soll, z.B. "Ändere SID auf P01"
+You can also directly say what should be changed, e.g. "Change SID to P01"
 """
                 self.state.add_message("assistant", response)
                 return response

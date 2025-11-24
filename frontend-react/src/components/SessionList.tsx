@@ -135,13 +135,13 @@ export default function SessionList({
     const diffDays = Math.floor(diffMs / 86400000)
 
     // Format based on time difference
-    if (diffMins < 1) return 'Gerade eben'
-    if (diffMins < 60) return `Vor ${diffMins} Min.`
-    if (diffHours < 24) return `Vor ${diffHours} Std.`
-    if (diffDays < 7) return `Vor ${diffDays} Tag${diffDays > 1 ? 'en' : ''}`
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins} min ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
 
     // Otherwise show date
-    return date.toLocaleDateString('de-DE', {
+    return date.toLocaleDateString('en-US', {
       day: '2-digit',
       month: '2-digit',
       year: '2-digit',
@@ -153,7 +153,7 @@ export default function SessionList({
 
     // Generate name from session_id and date
     const shortId = session.session_id.slice(0, 8)
-    const date = new Date(session.created_at).toLocaleDateString('de-DE', {
+    const date = new Date(session.created_at).toLocaleDateString('en-US', {
       day: '2-digit',
       month: '2-digit',
     })
@@ -163,7 +163,7 @@ export default function SessionList({
   const handleDeleteSession = async (sessionId: string, event: React.MouseEvent) => {
     event.stopPropagation() // Prevent session selection when clicking delete
 
-    if (!confirm('Möchtest du diese Session wirklich löschen?')) {
+    if (!confirm('Do you really want to delete this session?')) {
       return
     }
 
@@ -179,7 +179,7 @@ export default function SessionList({
       }
     } catch (error) {
       console.error('Failed to delete session:', error)
-      alert('Fehler beim Löschen der Session')
+      alert('Failed to delete session')
     }
   }
 
@@ -194,7 +194,7 @@ export default function SessionList({
   if (sessions.length === 0) {
     return (
       <div className={styles.emptyState}>
-        <Text size={300}>Keine Sessions vorhanden</Text>
+        <Text size={300}>No sessions available</Text>
       </div>
     )
   }
@@ -236,7 +236,7 @@ export default function SessionList({
               className={`deleteButton ${styles.deleteButton}`}
               icon={<Delete20Regular />}
               onClick={(e) => handleDeleteSession(session.session_id, e)}
-              aria-label="Session löschen"
+              aria-label="Delete session"
             />
           </div>
         )
