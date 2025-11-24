@@ -71,7 +71,8 @@ class ApiClient {
     })
     return {
       session_id: response.session_id,
-      created_at: response.created_at || new Date().toISOString(),
+      name: response.name,
+      created_at: response.created_at,
     }
   }
 

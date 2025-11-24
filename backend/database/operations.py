@@ -155,12 +155,9 @@ def list_all_sessions() -> List[Dict[str, Any]]:
         for row in cursor.fetchall():
             sessions.append({
                 "session_id": row[0],
-                "title": row[1],
-                "current_prompt": row[2],
-                "tfvars_ready": bool(row[3]),
+                "name": row[1],  # Frontend expects 'name' not 'title'
                 "created_at": row[4],
                 "updated_at": row[5],
-                "message_count": row[6]
             })
 
         conn.close()

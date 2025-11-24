@@ -29,7 +29,8 @@ export interface SessionListResponse {
 
 export interface CreateSessionResponse {
   session_id: string
-  message: string
+  name: string
+  created_at: string
 }
 
 export interface SendMessageRequest {
