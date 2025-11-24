@@ -267,8 +267,8 @@ async def chat(session_id: str, msg: ChatMessage):
             reply=response,
             session_id=session_id,
             tfvars_ready=agent.state.tfvars_ready,
-            current_step=agent.state.current_step,
-            total_steps=len(agent.state.steps)
+            current_step=agent.state.current_prompt,
+            total_steps=7  # V2 has 7 steps (0-6: env, sap, sizing, arch, network, os, confirmation)
         )
 
     except HTTPException:
@@ -390,5 +390,5 @@ if __name__ == "__main__":
         "main_v3:app",
         host=server_config.get("host", "0.0.0.0"),
         port=server_config.get("port", 8000),
-        reload=server_config.get("reload", True)
+        reload=False  # Disable reload to prevent "Address already in use"
     )

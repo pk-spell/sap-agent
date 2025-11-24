@@ -9,7 +9,7 @@ Helper functions to sync between:
 
 from typing import Dict, Any
 from models.session import ChatSession
-from agent_v3 import AgentState
+from agent_v3_hybrid import AgentState
 
 
 def agent_state_to_chat_session(session_id: str, agent_state: AgentState) -> ChatSession:
@@ -33,8 +33,8 @@ def agent_state_to_chat_session(session_id: str, agent_state: AgentState) -> Cha
     # Create ChatSession
     session = ChatSession(
         session_id=session_id,
-        current_prompt=agent_state.current_step,
-        user_data=agent_state.user_answers.copy(),
+        current_prompt=agent_state.current_prompt,
+        user_data=agent_state.user_data.copy(),
         messages=messages,
         tfvars_ready=agent_state.tfvars_ready,
         tfvars_content=agent_state.tfvars_content or ""
@@ -63,8 +63,8 @@ def chat_session_to_agent_state(chat_session: ChatSession) -> AgentState:
     ]
 
     # Copy other fields
-    state.current_step = chat_session.current_prompt
-    state.user_answers = chat_session.user_data.copy()
+    state.current_prompt = chat_session.current_prompt
+    state.user_data = chat_session.user_data.copy()
     state.tfvars_ready = chat_session.tfvars_ready
     state.tfvars_content = chat_session.tfvars_content
 
@@ -88,7 +88,7 @@ def merge_agent_state_into_session(agent_state: AgentState, chat_session: ChatSe
     ]
 
     # Update other fields
-    chat_session.current_prompt = agent_state.current_step
-    chat_session.user_data = agent_state.user_answers.copy()
+    chat_session.current_prompt = agent_state.current_prompt
+    chat_session.user_data = agent_state.user_data.copy()
     chat_session.tfvars_ready = agent_state.tfvars_ready
     chat_session.tfvars_content = agent_state.tfvars_content or ""
