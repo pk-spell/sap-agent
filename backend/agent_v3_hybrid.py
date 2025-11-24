@@ -181,18 +181,18 @@ Please try again!"""
             if not parsed and user_input.strip():
                 response = """I couldn't understand the input. Please provide valid SAP System information.
 
-**Anforderungen:**
-- **SID**: Genau 3 Zeichen, alphanumerisch, muss mit Buchstabe beginnen
-  - ✅ Gültig: X00, P01, S15, HDB
-  - ❌ Ungültig: X, 00X, SAP (reserviert), X_0 (Sonderzeichen)
-- **Database Platform**: HANA, DB2, ORACLE, ASE, SQLSERVER, oder NONE
+**Requirements:**
+- **SID**: Exactly 3 characters, alphanumeric, must start with a letter
+  - ✅ Valid: X00, P01, S15, HDB
+  - ❌ Invalid: X, 00X, SAP (reserved), X_0 (special characters)
+- **Database Platform**: HANA, DB2, ORACLE, ASE, SQLSERVER, or NONE
 
-**Beispiele:**
+**Examples:**
 - "X00, HDB, HANA"
 - "P01 ORA ORACLE"
 - "sid X00, db HDB, platform HANA"
 
-Versuch's nochmal, oder gib die Werte einzeln an!"""
+Please try again, or provide values one at a time!"""
                 self.state.add_message("assistant", response)
                 return response
 
@@ -216,9 +216,9 @@ Versuch's nochmal, oder gib die Werte einzeln an!"""
             # PARTIAL → Ask for missing
             missing = []
             if not has_sid:
-                missing.append("**SAP Application SID** (3 Zeichen, alphanumerisch, beginnt mit Buchstabe)")
+                missing.append("**SAP Application SID** (3 characters, alphanumeric, starts with letter)")
             if not has_db_sid:
-                missing.append("**Database SID** (3 Zeichen, alphanumerisch, beginnt mit Buchstabe)")
+                missing.append("**Database SID** (3 characters, alphanumeric, starts with letter)")
             if not has_platform:
                 missing.append("**Database Platform** (HANA, DB2, ORACLE, ASE, SQLSERVER, NONE)")
 
@@ -232,10 +232,10 @@ Versuch's nochmal, oder gib die Werte einzeln an!"""
 
             response = ""
             if collected:
-                response += "Perfekt! " + ", ".join(collected) + "\n\n"
+                response += "Perfect! " + ", ".join(collected) + "\n\n"
 
-            response += "Ich brauche noch:\n" + "\n".join(f"{i+1}. {m}" for i, m in enumerate(missing))
-            response += "\n\n💡 Beispiel: 'X00, HDB, HANA'"
+            response += "I still need:\n" + "\n".join(f"{i+1}. {m}" for i, m in enumerate(missing))
+            response += "\n\n💡 Example: 'X00, HDB, HANA'"
 
             self.state.add_message("assistant", response)
             return response
@@ -378,15 +378,15 @@ Das ist die empfohlene Konfiguration für Demo/Test/Development Umgebungen.
                 return response
 
             # Check for rejection
-            elif any(word in user_input_lower for word in ["nein", "no", "ändern", "edit", "korrigieren", "falsch"]):
-                response = """Kein Problem! Was möchtest du ändern?
+            elif any(word in user_input_lower for word in ["nein", "no", "ändern", "edit", "korrigieren", "falsch", "change"]):
+                response = """No problem! What would you like to change?
 
-Sag mir einfach welcher Wert korrigiert werden soll, z.B.:
-- "Ändere Environment auf PROD"
-- "Region soll northeurope sein"
-- "SID soll P01 sein"
+Just tell me which value should be corrected, e.g.:
+- "Change Environment to PROD"
+- "Region should be northeurope"
+- "SID should be P01"
 
-Oder starte einen neuen Chat um komplett von vorne zu beginnen."""
+Or start a new chat to begin completely from scratch."""
                 self.state.add_message("assistant", response)
                 return response
             else:
@@ -398,7 +398,7 @@ You can also directly say what should be changed, e.g. "Change SID to P01"
                 return response
 
         else:
-            response = "Konfiguration ist abgeschlossen! Du kannst die TFVARS Datei herunterladen oder eine neue Session starten."
+            response = "Configuration is complete! You can download the TFVARS file or start a new session."
             self.state.add_message("assistant", response)
             return response
 

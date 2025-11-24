@@ -124,11 +124,21 @@ class ApiClient {
     let filename = `sap-deployment-${sessionId.slice(0, 8)}.tfvars` // Fallback
 
     if (contentDisposition) {
-      // Match both quoted and unquoted filenames: filename="foo.txt" or filename=foo.txt
-      const filenameMatch = contentDisposition.match(/filename=["']?([^"';\s]+)["']?/i)
+      console.log('Content-Disposition:', contentDisposition) // Debug log
+
+      // Try RFC 6266 format first: filename*=UTF-8''foo.txt
+      let filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;\s]+)/i)
       if (filenameMatch && filenameMatch[1]) {
-        filename = filenameMatch[1]
+        filename = decodeURIComponent(filenameMatch[1])
+      } else {
+        // Try standard format: filename="foo.txt" or filename=foo.txt
+        filenameMatch = contentDisposition.match(/filename=["']?([^"';\s]+)["']?/i)
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1]
+        }
       }
+
+      console.log('Extracted filename:', filename) // Debug log
     }
 
     return { blob, filename }

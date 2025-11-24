@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import {
   makeStyles,
   tokens,
@@ -68,12 +68,8 @@ export default function App() {
   const [sessionRefreshKey, setSessionRefreshKey] = useState(0)
   const creatingSessionRef = useRef(false)
 
-  useEffect(() => {
-    // Create initial session (with guard to prevent double-creation in React Strict Mode)
-    if (!creatingSessionRef.current && !sessionId) {
-      createNewSession()
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Don't create session automatically on mount anymore
+  // User must explicitly click "New Session" or start typing
 
   const createNewSession = async () => {
     // Prevent multiple simultaneous session creations using ref
@@ -197,7 +193,7 @@ export default function App() {
             SAP Deployment Configuration
           </Text>
 
-          {sessionId && progress > 0 && (
+          {sessionId && (
             <Button
               appearance="secondary"
               icon={<Document24Regular />}
@@ -242,12 +238,33 @@ export default function App() {
             <div
               style={{
                 display: 'flex',
+                flexDirection: 'column',
                 justifyContent: 'center',
                 alignItems: 'center',
                 height: '100%',
+                gap: '24px',
+                padding: '48px',
+                textAlign: 'center',
               }}
             >
-              <Text>Loading Session...</Text>
+              <Text size={800} weight="semibold">
+                Welcome to SAP Deployment Assistant
+              </Text>
+              <Text size={400} style={{ maxWidth: '600px', color: tokens.colorNeutralForeground3 }}>
+                I'll help you create Terraform configurations for your SAP environment on Azure using the SAP Deployment Automation Framework (SDAF).
+              </Text>
+              <Text size={300} style={{ maxWidth: '600px', color: tokens.colorNeutralForeground3 }}>
+                Start a new chat to begin, or select an existing session from the sidebar.
+              </Text>
+              <Button
+                appearance="primary"
+                icon={<Chat24Regular />}
+                onClick={createNewSession}
+                disabled={creatingSessionRef.current}
+                size="large"
+              >
+                Start New Chat
+              </Button>
             </div>
           )}
         </div>
