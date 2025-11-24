@@ -36,13 +36,15 @@ const useStyles = makeStyles({
     gap: '4px',
     textAlign: 'left',
     position: 'relative',
-    '&:hover .delete-button': {
-      opacity: 1,
-    },
   },
   sessionItemWrapper: {
     position: 'relative',
     width: '100%',
+    '&:hover': {
+      '& .deleteButton': {
+        opacity: '1 !important',
+      },
+    },
   },
   deleteButton: {
     position: 'absolute',
@@ -55,6 +57,13 @@ const useStyles = makeStyles({
     height: '28px',
     padding: '4px',
     zIndex: 10,
+    backgroundColor: tokens.colorNeutralBackground1,
+    '&:hover': {
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+    },
+  },
+  deleteButtonVisible: {
+    opacity: 1,
   },
   activeSession: {
     backgroundColor: tokens.colorBrandBackground2,
@@ -95,7 +104,6 @@ export default function SessionList({
   const styles = useStyles()
   const [sessions, setSessions] = useState<Session[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [hoveredSession, setHoveredSession] = useState<string | null>(null)
 
   useEffect(() => {
     loadSessions()
@@ -199,14 +207,11 @@ export default function SessionList({
 
       {sessions.map((session) => {
         const isActive = session.session_id === currentSessionId
-        const isHovered = hoveredSession === session.session_id
 
         return (
           <div
             key={session.session_id}
             className={styles.sessionItemWrapper}
-            onMouseEnter={() => setHoveredSession(session.session_id)}
-            onMouseLeave={() => setHoveredSession(null)}
           >
             <Button
               appearance="subtle"
@@ -226,15 +231,13 @@ export default function SessionList({
               </Text>
             </Button>
 
-            {isHovered && (
-              <Button
-                appearance="subtle"
-                className={styles.deleteButton}
-                icon={<Delete20Regular />}
-                onClick={(e) => handleDeleteSession(session.session_id, e)}
-                aria-label="Session löschen"
-              />
-            )}
+            <Button
+              appearance="subtle"
+              className={`deleteButton ${styles.deleteButton}`}
+              icon={<Delete20Regular />}
+              onClick={(e) => handleDeleteSession(session.session_id, e)}
+              aria-label="Session löschen"
+            />
           </div>
         )
       })}
