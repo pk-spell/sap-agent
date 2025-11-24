@@ -130,17 +130,17 @@ Versuch's nochmal!"""
                 self.state.add_message("assistant", response)
                 return response
 
-            # PROGRESSIVE: Merge with existing data
+            # PROGRESSIVE: Merge with existing data (skip empty/whitespace values)
             for key, value in parsed.items():
-                if value:
-                    self.state.user_data[key] = value
+                if value and str(value).strip():
+                    self.state.user_data[key] = str(value).strip()
 
-            # Check what's still missing
-            has_env = self.state.user_data.get("environment")
-            has_location = self.state.user_data.get("location")
-            has_network = self.state.user_data.get("network_logical_name")
+            # Check what's still missing (strict validation: must be non-empty after strip)
+            has_env = self.state.user_data.get("environment", "").strip()
+            has_location = self.state.user_data.get("location", "").strip()
+            has_network = self.state.user_data.get("network_logical_name", "").strip()
 
-            # ALL VALUES PRESENT → Proceed
+            # ALL VALUES PRESENT → Proceed (all must be non-empty strings)
             if has_env and has_location and has_network:
                 self.state.current_prompt = 1
                 response = get_prompt_message(1, self.state.user_data)

@@ -65,17 +65,33 @@ def try_regex_parse_environment(msg: str, existing_data: Dict[str, Any] = None) 
                 "network_logical_name": match.group(3).upper()[:7]
             }
 
-    # Pattern 3: "dev in westeurope SAP01"
-    pattern3 = r'(\w+)\s+in\s+([\w\s-]+?)(?:\s+(?:network\s*:?\s*)?(\w+))?$'
-    match = re.search(pattern3, msg, re.IGNORECASE)
-    if match and match.group(3):
+    # Pattern 3a: "dev in westeurope SAP01" (with network)
+    pattern3a = r'(\w+)\s+in\s+([\w\s-]+?)\s+(?:network\s*:?\s*)?(\w+)$'
+    match = re.search(pattern3a, msg, re.IGNORECASE)
+    if match:
         region = validate_azure_region(match.group(2).strip())
         if region:
-            logger.info("✅ Regex: 'in' keyword - all 3")
+            env_valid, _ = validate_environment(match.group(1).upper())
+            network_valid, _ = validate_network_name(match.group(3).upper())
+            if env_valid and network_valid:
+                logger.info("✅ Regex: 'in' keyword - all 3")
+                return {
+                    "environment": match.group(1).upper()[:5],
+                    "location": region,
+                    "network_logical_name": match.group(3).upper()[:7]
+                }
+
+    # Pattern 3b: "dev in westeurope" (without network)
+    pattern3b = r'^(\w+)\s+in\s+([\w\s-]+?)$'
+    match = re.search(pattern3b, msg, re.IGNORECASE)
+    if match:
+        region = validate_azure_region(match.group(2).strip())
+        env_valid, _ = validate_environment(match.group(1).upper())
+        if region and env_valid:
+            logger.info("✅ Regex: 'in' keyword - env + region only")
             return {
                 "environment": match.group(1).upper()[:5],
-                "location": region,
-                "network_logical_name": match.group(3).upper()[:7]
+                "location": region
             }
 
     # PARTIAL PATTERNS - Support progressive input (CONTEXT-AWARE)
@@ -146,31 +162,42 @@ def try_regex_parse_environment(msg: str, existing_data: Dict[str, Any] = None) 
         words = msg.split()
         result = {}
 
+        # Track what we've found to avoid double-matching
+        env_found = has_env
+        location_found = has_location
+        network_found = has_network
+
         for i, word in enumerate(words):
             word_upper = word.upper().strip('.,;:')
 
-            # Check if it's a valid environment (single short word)
-            if not has_env and len(word_upper) <= 5:
-                env_valid, _ = validate_environment(word_upper)
-                if env_valid:
-                    result["environment"] = word_upper
-                    has_env = True
-                    logger.info(f"✅ Natural language: Found environment = {word_upper}")
+            # Skip common filler words
+            if word_upper in ["IN", "IST", "MEIN", "UND", "ZUDEM", "ENV", "REGION", "NETWORK", "THE", "AND", "MY", "IS"]:
+                continue
 
-            # Check if it's a region
-            if not has_location:
+            # Priority 1: Check if it's a region (most specific)
+            if not location_found:
                 region = validate_azure_region(word)
                 if region:
                     result["location"] = region
-                    has_location = True
+                    location_found = True
                     logger.info(f"✅ Natural language: Found region = {region}")
+                    continue  # Skip to next word
 
-            # Check if it's a network name (alphanumeric, max 7 chars)
-            if not has_network and len(word_upper) <= 7:
+            # Priority 2: Check if it's a valid environment (if not already found)
+            if not env_found and len(word_upper) <= 5:
+                env_valid, _ = validate_environment(word_upper)
+                if env_valid:
+                    result["environment"] = word_upper
+                    env_found = True
+                    logger.info(f"✅ Natural language: Found environment = {word_upper}")
+                    continue  # Skip to next word
+
+            # Priority 3: Check if it's a network name (only if env and location are set/found)
+            if (env_found or location_found) and not network_found and len(word_upper) <= 7:
                 network_valid, _ = validate_network_name(word_upper)
-                if network_valid and word_upper not in ["IST", "MEIN", "UND", "ZUDEM", "ENV", "REGION"]:
+                if network_valid:
                     result["network_logical_name"] = word_upper
-                    has_network = True
+                    network_found = True
                     logger.info(f"✅ Natural language: Found network = {word_upper}")
 
         if result:

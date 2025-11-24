@@ -121,11 +121,11 @@ export default function PreviewModal({
 
   const handleDownload = async () => {
     try {
-      const blob = await apiClient.downloadTfvars(sessionId)
+      const { blob, filename } = await apiClient.downloadTfvars(sessionId)
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `sap_${sessionId.slice(0, 8)}.tfvars`
+      a.download = filename
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)

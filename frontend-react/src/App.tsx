@@ -60,13 +60,33 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [tfvarsReady, setTfvarsReady] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [creatingSession, setCreatingSession] = useState(false)
 
   useEffect(() => {
-    // Create initial session
-    createNewSession()
-  }, [])
+    // Create initial session (with guard to prevent double-creation in React Strict Mode)
+    let mounted = true
+
+    const initSession = async () => {
+      if (mounted && !sessionId && !creatingSession) {
+        await createNewSession()
+      }
+    }
+
+    initSession()
+
+    return () => {
+      mounted = false
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const createNewSession = async () => {
+    // Prevent multiple simultaneous session creations
+    if (creatingSession) {
+      console.log('Session creation already in progress, skipping...')
+      return
+    }
+
+    setCreatingSession(true)
     try {
       const session = await apiClient.createSession()
       setSessionId(session.session_id)
@@ -74,6 +94,8 @@ export default function App() {
       setProgress(0)
     } catch (error) {
       console.error('Failed to create session:', error)
+    } finally {
+      setCreatingSession(false)
     }
   }
 
@@ -148,9 +170,10 @@ export default function App() {
             appearance="primary"
             icon={<Chat24Regular />}
             onClick={createNewSession}
+            disabled={creatingSession}
             style={{ width: '100%' }}
           >
-            Neue Session
+            {creatingSession ? 'Erstelle Session...' : 'Neue Session'}
           </Button>
         </div>
       </div>
@@ -199,6 +222,7 @@ export default function App() {
         <div className={styles.content}>
           {sessionId ? (
             <ChatWindow
+              key={sessionId} // Force remount when sessionId changes
               sessionId={sessionId}
               onProgress={handleProgress}
               onTfvarsReady={handleTfvarsReady}

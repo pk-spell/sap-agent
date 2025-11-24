@@ -5,11 +5,9 @@
 
 import type {
   Session,
-  Message,
   ChatResponse,
   SessionListResponse,
   CreateSessionResponse,
-  SendMessageRequest,
   LoadChatResponse,
   ApiError,
 } from '../types'
@@ -126,7 +124,8 @@ class ApiClient {
     let filename = `sap-deployment-${sessionId.slice(0, 8)}.tfvars` // Fallback
 
     if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename="?(.+)"?/)
+      // Match both quoted and unquoted filenames: filename="foo.txt" or filename=foo.txt
+      const filenameMatch = contentDisposition.match(/filename=["']?([^"';\s]+)["']?/i)
       if (filenameMatch && filenameMatch[1]) {
         filename = filenameMatch[1]
       }
@@ -139,7 +138,7 @@ class ApiClient {
    * Get TFVARS content as text (for preview)
    */
   async getTfvarsContent(sessionId: string): Promise<string> {
-    const blob = await this.downloadTfvars(sessionId)
+    const { blob } = await this.downloadTfvars(sessionId)
     return blob.text()
   }
 
