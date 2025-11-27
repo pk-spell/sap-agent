@@ -200,7 +200,8 @@ async def get_session_details(session_id: str):
             "name": chat_session.get_title(),
             "messages": chat_session.messages,
             "tfvars_ready": chat_session.tfvars_ready,
-            "tfvars_content": chat_session.tfvars_content if chat_session.tfvars_ready else ""
+            "tfvars_content": chat_session.tfvars_content if chat_session.tfvars_ready else "",
+            "current_prompt": chat_session.current_prompt,
         }
     except HTTPException:
         raise
@@ -323,12 +324,39 @@ async def download_tfvars(session_id: str):
     # Use SDAF-compliant filename
     filename = agent.get_tfvars_filename()
 
+    # Ensure we have a valid filename
+    if not filename or filename == "None":
+        filename = f"sap-deployment-{session_id[:8]}.tfvars"
+
     return FileResponse(
         temp_file.name,
         media_type="text/plain",
         filename=filename,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
         background=lambda: os.unlink(temp_file.name)
     )
+
+
+@app.get("/api/sessions/{session_id}/export/json")
+async def export_session_json(session_id: str):
+    """Export session configuration as JSON"""
+    try:
+        agent = get_agent(session_id)
+
+        # Return user_data as JSON
+        return JSONResponse(content={
+            "session_id": session_id,
+            "configuration": agent.state.user_data,
+            "tfvars_ready": agent.state.tfvars_ready,
+            "current_prompt": agent.state.current_prompt,
+            "exported_at": datetime.now().isoformat()
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to export: {e}")
 
 
 @app.post("/api/sessions/{session_id}/reset")

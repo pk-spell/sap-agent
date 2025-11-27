@@ -126,19 +126,28 @@ class ApiClient {
     if (contentDisposition) {
       console.log('Content-Disposition:', contentDisposition) // Debug log
 
-      // Try RFC 6266 format first: filename*=UTF-8''foo.txt
+      // Try multiple patterns to extract filename
+      // 1. RFC 6266 format: filename*=UTF-8''foo.txt
       let filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;\s]+)/i)
       if (filenameMatch && filenameMatch[1]) {
         filename = decodeURIComponent(filenameMatch[1])
       } else {
-        // Try standard format: filename="foo.txt" or filename=foo.txt
-        filenameMatch = contentDisposition.match(/filename=["']?([^"';\s]+)["']?/i)
+        // 2. Quoted format: filename="foo.txt"
+        filenameMatch = contentDisposition.match(/filename="([^"]+)"/i)
         if (filenameMatch && filenameMatch[1]) {
           filename = filenameMatch[1]
+        } else {
+          // 3. Unquoted format: filename=foo.txt
+          filenameMatch = contentDisposition.match(/filename=([^;\s]+)/i)
+          if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1]
+          }
         }
       }
 
       console.log('Extracted filename:', filename) // Debug log
+    } else {
+      console.warn('No Content-Disposition header found, using fallback filename')
     }
 
     return { blob, filename }
@@ -159,6 +168,13 @@ class ApiClient {
     await this.fetchApi(`/api/sessions/${sessionId}`, {
       method: 'DELETE',
     })
+  }
+
+  /**
+   * Export session configuration as JSON
+   */
+  async exportAsJSON(sessionId: string): Promise<any> {
+    return this.fetchApi(`/api/sessions/${sessionId}/export/json`)
   }
 }
 

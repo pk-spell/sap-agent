@@ -40,6 +40,7 @@ enable_accelerated_networking = {{ config.enable_accelerated_networking | lower 
 high_availability = {{ config.high_availability | lower }}
 scs_high_availability = {{ config.scs_high_availability | lower }}
 database_high_availability = {{ config.database_high_availability | lower }}
+use_single_node_hana = {{ config.use_single_node_hana | lower }}
 
 # --- Operating System ---
 os_type = "{{ config.os_type }}"
@@ -54,11 +55,6 @@ load_balancer_type = "{{ config.load_balancer_type }}"
 
 # --- Bill of Materials (BOM) ---
 bom_base_name = "{{ config.bom_base_name }}"
-
-# --- High Availability & Sizing ---
-use_single_node_hana = {{ config.use_single_node_hana | lower }}
-scs_high_availability = {{ config.scs_high_availability | lower }}
-database_high_availability = {{ config.database_high_availability | lower }}
 
 # --- Service Principal ---
 use_spn = {{ config.use_spn | lower }}
@@ -79,11 +75,10 @@ backup_storage_account = "{{ config.backup_storage_account }}"
 enable_monitoring = {{ config.enable_monitoring | lower }}
 log_analytics_workspace_id = "{{ config.log_analytics_workspace_id }}"
 diagnostics_storage_account = "{{ config.diagnostics_storage_account }}"
+enable_diagnostics = {{ config.enable_diagnostics | lower }}
 
-# --- Security & Compliance ---
-enable_accelerated_networking = {{ config.enable_accelerated_networking | lower }}
-enable_secure_boot = {{ config.enable_secure_boot | lower }}
-enable_disk_encryption = {{ config.enable_disk_encryption | lower }}
+# --- Application Security Groups ---
+application_security_groups = {{ config.application_security_groups | lower }}
 
 # --- Tags (Cost Management) ---
 cost_center = "{{ config.cost_center }}"
@@ -91,16 +86,6 @@ business_unit = "{{ config.business_unit }}"
 project_owner = "{{ config.project_owner }}"
 project = "{{ config.project }}"
 criticality = "{{ config.criticality }}"
-
-# --- Tags (Cost Management) ---
-cost_center = "{{ config.cost_center }}"
-business_unit = "{{ config.business_unit }}"
-project_owner = "{{ config.project_owner }}"
-
-# --- Additional Features ---
-application_security_groups = {{ config.application_security_groups | lower }}
-enable_backup = {{ config.enable_backup | lower }}
-enable_diagnostics = {{ config.enable_diagnostics | lower }}
 
 # --- Sizing Comments ---
 # Sizing Profile: {{ config._sizing_profile }}

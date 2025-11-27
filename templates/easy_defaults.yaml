@@ -1,119 +1,264 @@
-# SAP Deployment Automation Framework - Easy Mode Defaults
-# Diese Werte funktionieren "out-of-the-box" für 90% der SAP-Deployments
+# SAP Deployment Automation Framework - Default Configuration
+# These values provide sensible defaults for single-instance SAP deployments
+# Based on official SDAF examples from Azure/sap-automation-samples
 
-# --- Environment Block ---
-deployer_environment: "MGMT"
-workload_environment: "DEV"
-workload_zone: "DEV-WEEU"
+#########################################################################################
+#  Environment/Application defaults                                                     #
+#########################################################################################
+
+# Default environment (DEV, QA, PRD, etc.)
+environment: "DEV"
+
+# Default Azure region
 location: "westeurope"
+
+# Network logical name (used in naming convention)
 network_logical_name: "SAP01"
 
-# --- SAP System Block ---
-sap_system_name: "SAP01"
-sap_product_id: "S4HANA2023"
+#########################################################################################
+#  SAP System defaults                                                                  #
+#########################################################################################
+
+# Default SAP SID (will be replaced by user input)
+sid: "X00"
+
+# Default Database SID
+database_sid: "HDB"
+
+# Default database platform (HANA, DB2, ORACLE, ASE, SQLSERVER, NONE)
 database_platform: "HANA"
-database_sid: "XDB"
 
-# --- Infrastructure Sizing (Small = Non-PRD) ---
-app_tier_sku: "Standard_D4s_v3"
-web_tier_sku: "Standard_D2s_v3"
-database_tier_sku: "Standard_E16s_v3"
-scs_tier_sku: "Standard_D2s_v3"
+# System description
+description: "SAP System deployed via SDAF Assistant"
 
-# --- Network (Dummy ARM IDs - werden in echtem Deployment ersetzt) ---
-# Pattern: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/{subnet}
-ingress_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-ingress"
-admin_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-admin"
-db_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-db"
-app_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-app"
-web_subnet_arm_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Network/virtualNetworks/vnet-sap-mgmt/subnets/sap-web"
+#########################################################################################
+#  Deployment parameters                                                                #
+#########################################################################################
 
-# --- Security ---
-automation_username: "azureadm"
-enable_secure_boot: false
-enable_disk_encryption: true
-enable_accelerated_networking: true
+# Use secondary IPs for virtual hostname support
+use_secondary_ips: true
 
-# --- High Availability (Easy Mode = disabled) ---
-high_availability: false
-scs_high_availability: false
+# Use scale sets for deployment
+use_scalesets_for_deployment: false
+
+# Use premium v2 storage for database
+database_use_premium_v2_storage: false
+
+# Upgrade packages after installation
+upgrade_packages: false
+
+#########################################################################################
+#  Database tier defaults (Single Instance)                                             #
+#########################################################################################
+
+# Number of database servers (1 for single instance)
+database_server_count: 1
+
+# High availability for database (false for single instance)
 database_high_availability: false
 
-# --- Tags (Kosten-Tracking) ---
-cost_center: "CC-99999"
-business_unit: "SAP-IT"
-project_owner: "SAP-Team"
+# Database VM size - Common options:
+# Demo/Dev: E20ds_v4 (160GB RAM)
+# Small: E32ds_v4 (256GB RAM)
+# Medium: E64ds_v4 (512GB RAM)
+# Large: M64ls (512GB RAM, M-series)
+# XLarge: M128s (2TB RAM)
+database_size: "E20ds_v4"
 
-# --- OS Configuration ---
-os_type: "LINUX"
-os_major_version: "RHEL"
-os_minor_version: "84"
-use_avset: false  # Availability Sets (alt)
-use_zones: false  # Availability Zones (neu)
+# Use DHCP for database VMs
+database_vm_use_dhcp: true
 
-# --- Additional Features (Easy Mode = disabled) ---
-use_load_balancer: true
-load_balancer_type: "STANDARD"
-application_security_groups: false
-enable_backup: false
-enable_diagnostics: false
+# Database VM availability zones
+database_vm_zones: '["1"]'
 
+# Use proximity placement group for database
+database_use_ppg: true
 
-# --- SAP DEPLOYMENT AUTOMATION FRAMEWORK - REQUIRED VALUES ---
+# Use availability set for database
+database_use_avset: false
 
-# Bill of Materials (BOM) - Wichtig für SAP-Software-Versionen
-bom_base_name: "S4HANA2023SPS01"  # Basis-BOM Name
+#########################################################################################
+#  Application tier defaults (Disabled for Single Instance)                             #
+#########################################################################################
 
-# High Availability & Sizing
-use_single_node_hana: true  # true = eine DB-VM, false = HANA-Cluster
+# App tier sizing key
+app_tier_sizing_dictionary_key: "Optimized"
+
+# Enable application tier deployment (false for single instance)
+enable_app_tier_deployment: false
+
+# Use DHCP for app tier
+app_tier_use_dhcp: true
+
+#########################################################################################
+#  SAP Central Services defaults (Disabled for Single Instance)                         #
+#########################################################################################
+
+# SCS server count (0 for single instance)
+scs_server_count: 0
+
+# SCS high availability
 scs_high_availability: false
-database_high_availability: false
-high_availability: false
 
-# Service Principal & Authentication
-use_spn: true  # Use Service Principal instead of Managed Identity
-spn_client_id: "00000000-0000-0000-0000-000000000000"  # Platzhalter
-spn_tenant_id: "00000000-0000-0000-0000-000000000000"   # Platzhalter
+# Instance numbers
+scs_instance_number: "01"
+ers_instance_number: "02"
+pas_instance_number: "00"
 
-# Key Vault für Secrets (Zertifikate, Passwörter)
-key_vault_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.KeyVault/vaults/kv-sap-mgmt"
+# SCS zones
+scs_server_zones: '["1"]'
 
-# Storage Account für Boot-Diagnostics
-storage_account: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Storage/storageAccounts/stsapmgmt"
+# SCS proximity placement group
+scs_server_use_ppg: true
 
-# Application Security Groups (ASG)
-application_security_groups: false
+# SCS availability set
+scs_server_use_avset: false
 
-# Diagnostics
-enable_diagnostics: true
-diagnostics_storage_account: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Storage/storageAccounts/stsapmgmt"
+#########################################################################################
+#  Application Servers defaults (Disabled for Single Instance)                          #
+#########################################################################################
 
-# Backup (optional, aber empfohlen)
-enable_backup: false
-backup_storage_account: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.Storage/storageAccounts/backup-sap-mgmt"
+# Application server count (0 for single instance)
+application_server_count: 0
 
-# Monitoring
-enable_monitoring: false
-log_analytics_workspace_id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-sap-mgmt/providers/Microsoft.OperationalInsights/workspaces/log-sap-mgmt"
+# Application server zones
+application_server_zones: '["1"]'
 
-# Tags (für Cost Management)
-cost_center: "CC-99999"
-business_unit: "SAP-IT"
-project_owner: "SAP-Team"
-project: "SAP-Deployment"
-criticality: "Mission-Critical"
+# Dual NICs for app tier
+app_tier_dual_nics: false
 
-# OS Configuration
+# App server proximity placement group
+application_server_use_ppg: true
+
+# App server availability set
+application_server_use_avset: true
+
+#########################################################################################
+#  Web Dispatcher defaults (Disabled for Single Instance)                               #
+#########################################################################################
+
+# Web dispatcher count (0 for single instance)
+webdispatcher_server_count: 0
+
+# Web dispatcher SID
+web_sid: "W00"
+
+# Web instance number
+web_instance_number: "00"
+
+# Web dispatcher zones
+webdispatcher_server_zones: '["1"]'
+
+# Web dispatcher proximity placement group
+webdispatcher_server_use_ppg: false
+
+# Web dispatcher availability set
+webdispatcher_server_use_avset: false
+
+#########################################################################################
+#  OS Image defaults                                                                    #
+#########################################################################################
+
+# Operating system type
 os_type: "LINUX"
-os_major_version: "RHEL"
-os_minor_version: "84"
-use_avset: false
-use_zones: false
 
-# Additional Features
-use_load_balancer: true
-load_balancer_type: "STANDARD"
-load_balancer_sku: "Standard"
-enable_accelerated_networking: true
-enable_secure_boot: false
-enable_disk_encryption: true
+# OS Publisher (SUSE or RedHat)
+os_publisher: "SUSE"
+
+# OS Offer (sles-sap-15-sp5, RHEL-SAP-HA, etc.)
+os_offer: "sles-sap-15-sp5"
+
+# OS SKU
+os_sku: "gen2"
+
+#########################################################################################
+#  Common VM settings                                                                   #
+#########################################################################################
+
+# Deploy monitoring extension
+deploy_monitoring_extension: false
+
+# Deploy defender extension
+deploy_defender_extension: false
+
+# Patch mode
+patch_mode: "ImageDefault"
+
+# Patch assessment mode
+patch_assessment_mode: "ImageDefault"
+
+#########################################################################################
+#  Cluster settings (for HA deployments)                                                #
+#########################################################################################
+
+# SCS cluster type (AFA, ASD, ISCSI)
+scs_cluster_type: "AFA"
+
+# Database cluster type (AFA, ASD, ISCSI)
+database_cluster_type: "AFA"
+
+# Use MSI for clusters
+use_msi_for_clusters: true
+
+# Use simple mount (SLES 15 SP3+)
+use_simple_mount: false
+
+# Use fence_kdump
+use_fence_kdump: false
+
+#########################################################################################
+#  NFS settings                                                                         #
+#########################################################################################
+
+# NFS Provider (AFS, ANF, NFS, NONE)
+# AFS = Azure Files for NFS (recommended for single instance)
+# ANF = Azure NetApp Files (for larger deployments)
+nfs_provider: "AFS"
+
+# sapmnt volume size in GB
+sapmnt_volume_size: 128
+
+# Random ID for storage accounts
+use_random_id_for_storageaccounts: true
+
+#########################################################################################
+#  Network settings                                                                     #
+#########################################################################################
+
+# Network type (greenfield or brownfield)
+network_type: "greenfield"
+
+# Use load balancers for standalone deployments
+use_loadbalancers_for_standalone_deployments: true
+
+# Use private endpoints
+use_private_endpoint: true
+
+# NSG/ASG with VNet
+nsg_asg_with_vnet: false
+
+# Greenfield subnet defaults
+admin_subnet: "10.1.0.0/24"
+db_subnet: "10.1.1.0/24"
+app_subnet: "10.1.2.0/24"
+web_subnet: "10.1.3.0/24"
+
+#########################################################################################
+#  Key Vault settings                                                                   #
+#########################################################################################
+
+# Enable purge control
+enable_purge_control_for_keyvaults: false
+
+#########################################################################################
+#  Proximity Placement Group                                                            #
+#########################################################################################
+
+# Use PPG for app tier
+use_app_proximityplacementgroups: false
+
+#########################################################################################
+#  Deployment type indicator                                                            #
+#########################################################################################
+
+deployment_type: "Single Instance (Standard)"

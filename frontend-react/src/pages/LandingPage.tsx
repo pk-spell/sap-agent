@@ -10,12 +10,14 @@ import {
   Text,
   Card,
   Link,
+  Badge,
 } from '@fluentui/react-components'
 import {
   Chat24Regular,
   Settings24Filled,
   CloudArrowUp24Filled,
   Checkmark24Filled,
+  Sparkle24Regular,
 } from '@fluentui/react-icons'
 
 const useStyles = makeStyles({
@@ -109,20 +111,20 @@ const useStyles = makeStyles({
     fontSize: '24px',
   },
   blueIcon: {
-    backgroundColor: tokens.colorPaletteBlueBorder2,
-    color: tokens.colorPaletteBlueForeground2,
+    backgroundColor: tokens.colorBrandBackground2,
+    color: tokens.colorBrandForeground1,
   },
   greenIcon: {
-    backgroundColor: tokens.colorPaletteGreenBorder2,
+    backgroundColor: tokens.colorPaletteGreenBackground2,
     color: tokens.colorPaletteGreenForeground2,
   },
   purpleIcon: {
-    backgroundColor: tokens.colorPalettePurpleBorder2,
-    color: tokens.colorPalettePurpleForeground2,
+    backgroundColor: tokens.colorPaletteMarigoldBackground2,
+    color: tokens.colorPaletteMarigoldForeground2,
   },
   orangeIcon: {
-    backgroundColor: tokens.colorPaletteOrangeBorder2,
-    color: tokens.colorPaletteOrangeForeground2,
+    backgroundColor: tokens.colorPaletteDarkOrangeBackground2,
+    color: tokens.colorPaletteDarkOrangeForeground2,
   },
   featureTitle: {
     fontSize: '16px',
@@ -149,6 +151,35 @@ const useStyles = makeStyles({
     textDecorationLine: 'none',
     fontWeight: 600,
   },
+  templatesSection: {
+    padding: '64px 32px',
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  templatesContent: {
+    maxWidth: '1200px',
+    margin: '0 auto',
+  },
+  templatesGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+    gap: '24px',
+    marginTop: '32px',
+  },
+  templateCard: {
+    padding: '24px',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      transform: 'translateY(-4px)',
+      boxShadow: tokens.shadow16,
+    },
+  },
+  templateHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    marginBottom: '12px',
+  },
 })
 
 export default function LandingPage() {
@@ -161,44 +192,157 @@ export default function LandingPage() {
 
   return (
     <div className={styles.root}>
-      <div className={styles.container}>
-        <div className={styles.header}>
-          <Text className={styles.title}>SAP Deployment Assistant</Text>
+      <div className={styles.hero}>
+        <div className={styles.heroContent}>
+          {/* Left Column - Main Content */}
+          <div className={styles.leftColumn}>
+            <div className={styles.badge}>
+              <Checkmark24Filled />
+              <span>AI-Powered Configuration</span>
+            </div>
 
-          <Text className={styles.subtitle}>
-            AI-powered conversational tool for generating SDAF-compliant Terraform configurations
-          </Text>
+            <h1 className={styles.title}>
+              SAP Deployment{' '}
+              <span className={styles.gradient}>Assistant</span>
+            </h1>
 
-          <Text className={styles.description}>
-            This assistant helps you create production-ready <code>.tfvars</code> files for SAP deployments on Azure
-            using the SAP Deployment Automation Framework (SDAF). Simply answer a few questions in natural language,
-            and we'll generate the complete Terraform variable file for you.
-          </Text>
+            <p className={styles.subtitle}>
+              Generate production-ready Terraform configurations for SAP on Azure
+              through natural language conversations. Powered by SDAF best practices.
+            </p>
 
-          <div className={styles.buttonContainer}>
-            <Button
-              className={styles.ctaButton}
-              appearance="primary"
-              icon={<Chat24Regular />}
-              onClick={handleStartChat}
-              size="large"
-            >
-              Start Configuration Chat
-            </Button>
+            <div className={styles.ctaContainer}>
+              <Button
+                className={styles.ctaButton}
+                appearance="primary"
+                icon={<Chat24Regular />}
+                onClick={handleStartChat}
+                size="large"
+              >
+                Start Chat
+              </Button>
+              <Link
+                href="https://learn.microsoft.com/en-us/azure/sap/automation/deployment-framework"
+                target="_blank"
+                className={styles.link}
+              >
+                Learn about SDAF →
+              </Link>
+            </div>
           </div>
 
-          <Text className={styles.footer}>
-            Learn more about{' '}
-            <Link
-              href="https://learn.microsoft.com/en-us/azure/sap/automation/deployment-framework"
-              target="_blank"
-              className={styles.link}
-            >
-              SAP Deployment Automation Framework (SDAF)
-            </Link>
-          </Text>
+          {/* Right Column - Feature Cards */}
+          <div className={styles.rightColumn}>
+            <Card className={styles.featureCard}>
+              <div className={`${styles.featureIconContainer} ${styles.blueIcon}`}>
+                <Chat24Regular />
+              </div>
+              <Text className={styles.featureTitle}>Conversational Flow</Text>
+              <Text className={styles.featureDescription}>
+                Answer simple questions in natural language - no complex forms or technical jargon required
+              </Text>
+            </Card>
+
+            <Card className={styles.featureCard}>
+              <div className={`${styles.featureIconContainer} ${styles.greenIcon}`}>
+                <Checkmark24Filled />
+              </div>
+              <Text className={styles.featureTitle}>SDAF Validated</Text>
+              <Text className={styles.featureDescription}>
+                All configurations follow SAP Deployment Automation Framework best practices and standards
+              </Text>
+            </Card>
+
+            <Card className={styles.featureCard}>
+              <div className={`${styles.featureIconContainer} ${styles.purpleIcon}`}>
+                <Settings24Filled />
+              </div>
+              <Text className={styles.featureTitle}>180+ Parameters</Text>
+              <Text className={styles.featureDescription}>
+                Comprehensive configuration coverage with intelligent defaults for rapid deployment
+              </Text>
+            </Card>
+
+            <Card className={styles.featureCard}>
+              <div className={`${styles.featureIconContainer} ${styles.orangeIcon}`}>
+                <CloudArrowUp24Filled />
+              </div>
+              <Text className={styles.featureTitle}>Production Ready</Text>
+              <Text className={styles.featureDescription}>
+                Export complete .tfvars files ready for immediate use with Terraform and Azure
+              </Text>
+            </Card>
+          </div>
         </div>
       </div>
+
+      {/* Quick Start Templates */}
+      <div className={styles.templatesSection}>
+        <div className={styles.templatesContent}>
+          <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+            <Text size={600} weight="bold">
+              Quick Start Templates
+            </Text>
+            <br />
+            <Text size={300} style={{ color: tokens.colorNeutralForeground3 }}>
+              Start with a pre-configured template for common scenarios
+            </Text>
+          </div>
+
+          <div className={styles.templatesGrid}>
+            <Card className={styles.templateCard} onClick={handleStartChat}>
+              <div className={styles.templateHeader}>
+                <Sparkle24Regular style={{ color: tokens.colorPaletteBlueForeground2 }} />
+                <Text size={400} weight="semibold">
+                  S/4HANA Development
+                </Text>
+                <Badge appearance="tint" color="success">Popular</Badge>
+              </div>
+              <Text size={300} style={{ color: tokens.colorNeutralForeground3 }}>
+                Standard dev environment with demo sizing, single instance, no HA
+              </Text>
+            </Card>
+
+            <Card className={styles.templateCard} onClick={handleStartChat}>
+              <div className={styles.templateHeader}>
+                <Settings24Filled style={{ color: tokens.colorPalettePurpleForeground2 }} />
+                <Text size={400} weight="semibold">
+                  Production HA Setup
+                </Text>
+              </div>
+              <Text size={300} style={{ color: tokens.colorNeutralForeground3 }}>
+                High-availability production deployment with distributed architecture
+              </Text>
+            </Card>
+
+            <Card className={styles.templateCard} onClick={handleStartChat}>
+              <div className={styles.templateHeader}>
+                <Chat24Regular style={{ color: tokens.colorPaletteGreenForeground2 }} />
+                <Text size={400} weight="semibold">
+                  QA Environment
+                </Text>
+              </div>
+              <Text size={300} style={{ color: tokens.colorNeutralForeground3 }}>
+                Quality assurance environment with medium sizing, no HA
+              </Text>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className={styles.footer}>
+        <Text className={styles.footerText}>
+          Built for SAP on Azure deployments using the{' '}
+          <Link
+            href="https://learn.microsoft.com/en-us/azure/sap/automation/deployment-framework"
+            target="_blank"
+            className={styles.link}
+          >
+            SAP Deployment Automation Framework
+          </Link>
+        </Text>
+      </footer>
     </div>
   )
 }

@@ -43,6 +43,7 @@ export interface LoadChatResponse {
   messages: Message[]
   tfvars_content?: string
   tfvars_ready?: boolean
+  current_prompt?: number
 }
 
 export interface ApiError {

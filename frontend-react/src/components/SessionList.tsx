@@ -10,8 +10,15 @@ import {
   Button,
   Text,
   Spinner,
+  Dialog,
+  DialogSurface,
+  DialogTitle,
+  DialogBody,
+  DialogActions,
+  DialogContent,
+  Input,
 } from '@fluentui/react-components'
-import { Chat20Regular, CheckmarkCircle20Regular, Delete20Regular } from '@fluentui/react-icons'
+import { Chat20Regular, CheckmarkCircle20Regular, Delete20Regular, Warning20Regular, Share20Regular, Search20Regular, Dismiss20Regular } from '@fluentui/react-icons'
 import { apiClient } from '../api/client'
 import type { Session } from '../types'
 
@@ -41,14 +48,13 @@ const useStyles = makeStyles({
     position: 'relative',
     width: '100%',
     '&:hover': {
-      '& .deleteButton': {
+      '& .actionButton': {
         opacity: '1 !important',
       },
     },
   },
-  deleteButton: {
+  actionButton: {
     position: 'absolute',
-    right: '8px',
     top: '50%',
     transform: 'translateY(-50%)',
     opacity: 0,
@@ -61,6 +67,12 @@ const useStyles = makeStyles({
     '&:hover': {
       backgroundColor: tokens.colorNeutralBackground1Hover,
     },
+  },
+  shareButton: {
+    right: '44px',
+  },
+  deleteButton: {
+    right: '8px',
   },
   deleteButtonVisible: {
     opacity: 1,
@@ -104,10 +116,33 @@ export default function SessionList({
   const styles = useStyles()
   const [sessions, setSessions] = useState<Session[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filteredSessions, setFilteredSessions] = useState<Session[]>([])
 
   useEffect(() => {
     loadSessions()
   }, [])
+
+  // Filter sessions based on search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredSessions(sessions)
+      return
+    }
+
+    const query = searchQuery.toLowerCase()
+    const filtered = sessions.filter(session => {
+      const name = getSessionName(session).toLowerCase()
+      const sessionId = session.session_id.toLowerCase()
+      const date = formatDate(session.created_at).toLowerCase()
+
+      return name.includes(query) || sessionId.includes(query) || date.includes(query)
+    })
+
+    setFilteredSessions(filtered)
+  }, [searchQuery, sessions])
 
   const loadSessions = async () => {
     setIsLoading(true)
@@ -160,26 +195,50 @@ export default function SessionList({
     return `Session ${date} (${shortId})`
   }
 
-  const handleDeleteSession = async (sessionId: string, event: React.MouseEvent) => {
+  const handleDeleteClick = (sessionId: string, event: React.MouseEvent) => {
     event.stopPropagation() // Prevent session selection when clicking delete
+    setSessionToDelete(sessionId)
+    setDeleteDialogOpen(true)
+  }
 
-    if (!confirm('Do you really want to delete this session?')) {
-      return
-    }
+  const handleConfirmDelete = async () => {
+    if (!sessionToDelete) return
 
     try {
-      await apiClient.deleteSession(sessionId)
+      await apiClient.deleteSession(sessionToDelete)
       // Remove from local state
-      setSessions(sessions.filter(s => s.session_id !== sessionId))
+      setSessions(sessions.filter(s => s.session_id !== sessionToDelete))
 
       // If we deleted the current session, notify parent
-      if (sessionId === currentSessionId) {
+      if (sessionToDelete === currentSessionId) {
         // Parent should handle creating a new session
         onSelectSession('')
       }
+
+      // Close dialog and reset
+      setDeleteDialogOpen(false)
+      setSessionToDelete(null)
     } catch (error) {
       console.error('Failed to delete session:', error)
       alert('Failed to delete session')
+      setDeleteDialogOpen(false)
+    }
+  }
+
+  const handleCancelDelete = () => {
+    setDeleteDialogOpen(false)
+    setSessionToDelete(null)
+  }
+
+  const handleShareSession = async (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation()
+
+    try {
+      await navigator.clipboard.writeText(sessionId)
+      alert(`Session ID copied to clipboard!\n\nSession ID: ${sessionId}`)
+    } catch (error) {
+      console.error('Share failed:', error)
+      alert(`Session ID: ${sessionId}\n\nCopy this ID manually.`)
     }
   }
 
@@ -205,7 +264,35 @@ export default function SessionList({
         Sessions
       </Text>
 
-      {sessions.map((session) => {
+      {/* Search Input */}
+      <div style={{ marginBottom: '12px' }}>
+        <Input
+          placeholder="Search sessions..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          contentBefore={<Search20Regular />}
+          contentAfter={
+            searchQuery && (
+              <Button
+                appearance="subtle"
+                icon={<Dismiss20Regular />}
+                size="small"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+              />
+            )
+          }
+          size="small"
+          style={{ width: '100%' }}
+        />
+        {searchQuery && (
+          <Text size={200} style={{ color: tokens.colorNeutralForeground3, marginTop: '4px', display: 'block' }}>
+            {filteredSessions.length} result{filteredSessions.length !== 1 ? 's' : ''}
+          </Text>
+        )}
+      </div>
+
+      {filteredSessions.map((session) => {
         const isActive = session.session_id === currentSessionId
 
         return (
@@ -233,14 +320,56 @@ export default function SessionList({
 
             <Button
               appearance="subtle"
-              className={`deleteButton ${styles.deleteButton}`}
+              className={`actionButton ${styles.actionButton} ${styles.shareButton}`}
+              icon={<Share20Regular />}
+              onClick={(e) => handleShareSession(session.session_id, e)}
+              aria-label="Share session"
+            />
+
+            <Button
+              appearance="subtle"
+              className={`actionButton ${styles.actionButton} ${styles.deleteButton}`}
               icon={<Delete20Regular />}
-              onClick={(e) => handleDeleteSession(session.session_id, e)}
+              onClick={(e) => handleDeleteClick(session.session_id, e)}
               aria-label="Delete session"
             />
           </div>
         )
       })}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={(_, data) => setDeleteDialogOpen(data.open)}>
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>Delete Session?</DialogTitle>
+            <DialogContent>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <Warning20Regular style={{ color: tokens.colorPaletteRedForeground1, fontSize: '24px' }} />
+                <div>
+                  <Text>
+                    Are you sure you want to delete this session?
+                  </Text>
+                  <br />
+                  <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                    This action cannot be undone.
+                  </Text>
+                </div>
+              </div>
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={handleCancelDelete}>
+                Cancel
+              </Button>
+              <Button appearance="primary" style={{
+                backgroundColor: tokens.colorPaletteRedBackground3,
+                color: 'white'
+              }} onClick={handleConfirmDelete}>
+                Delete
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </div>
   )
 }

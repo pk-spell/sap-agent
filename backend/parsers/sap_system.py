@@ -80,11 +80,33 @@ def try_regex_parse_sap_system(msg: str, existing_data: Dict[str, Any]) -> Optio
             "database_platform": platform
         }
 
-    # Pattern 3: "SID X00, DB HDB, platform HANA" (labeled)
-    pattern3 = r'(?:sid\s*:?\s*)?([A-Z0-9]{3}).*?(?:db|database).*?([A-Z0-9]{3}).*?(HANA|DB2|ORACLE|ASE|SQLSERVER|NONE)'
-    match = re.search(pattern3, msg, re.IGNORECASE)
+    # Pattern 3a: "SID is X00, database HDB, using HANA" (natural language with "is")
+    pattern3a = r'sid\s+(?:is\s+)?([A-Z0-9]{3}).*?(?:db|database)\s+(?:is\s+|sid\s+)?([A-Z0-9]{3}).*?(HANA|DB2|ORACLE|ASE|SQLSERVER|NONE)'
+    match = re.search(pattern3a, msg, re.IGNORECASE)
     if match:
-        logger.info("✅ Regex: labeled format")
+        logger.info("✅ Regex: natural language format with 'is'")
+        return {
+            "sid": match.group(1).upper(),
+            "database_sid": match.group(2).upper(),
+            "database_platform": match.group(3).upper()
+        }
+
+    # Pattern 3b: "SID: X00, DB: HDB, platform: HANA" (labeled with colon)
+    pattern3b = r'sid\s*[:=]\s*([A-Z0-9]{3}).*?(?:db|database)\s*(?:sid)?\s*[:=]?\s*([A-Z0-9]{3}).*?(HANA|DB2|ORACLE|ASE|SQLSERVER|NONE)'
+    match = re.search(pattern3b, msg, re.IGNORECASE)
+    if match:
+        logger.info("✅ Regex: labeled format with colon")
+        return {
+            "sid": match.group(1).upper(),
+            "database_sid": match.group(2).upper(),
+            "database_platform": match.group(3).upper()
+        }
+
+    # Pattern 3c: Generic labeled format (fallback)
+    pattern3c = r'(?:app\s*(?:sid)?|sid)\s*[:=]?\s*([A-Z0-9]{3}).*?(?:db|database).*?([A-Z0-9]{3}).*?(HANA|DB2|ORACLE|ASE|SQLSERVER|NONE)'
+    match = re.search(pattern3c, msg, re.IGNORECASE)
+    if match:
+        logger.info("✅ Regex: generic labeled format")
         return {
             "sid": match.group(1).upper(),
             "database_sid": match.group(2).upper(),

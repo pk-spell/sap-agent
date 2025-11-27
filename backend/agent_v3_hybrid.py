@@ -6,7 +6,9 @@ Uses V2's proven conversation logic with V3's LLM-Factory.
 
 Key Changes from V2:
 - LLM is now configurable (via config.yaml)
-- Otherwise identical to V2's chat_agent_v2.py
+- Quick-select templates (1-4) for common configurations
+- Regex-first parsing with typo correction via normalizer
+- Numbered options for all prompts
 
 This ensures:
 - Same prompts as V2 (grouped questions, clear examples)
@@ -22,7 +24,7 @@ from dataclasses import dataclass, field
 # LLM Factory
 from config_loader import get_config
 
-# V2's proven parsers (UNVERÄNDERT!)
+# V2's proven parsers (with normalizer integration)
 from parsers import (
     parse_environment_input,
     parse_sap_system_input,
@@ -41,6 +43,9 @@ from prompts import (
     generate_final_summary,
     generate_sdaf_filename
 )
+
+# Quick templates
+from config_data.quick_templates import find_template_by_input, get_template_summary
 
 # TFVARS Generator
 from tfvars import generate_tfvars
@@ -103,6 +108,26 @@ class SAPAgentV3:
 
         # Prompt 0: Environment Identity - Progressive Questioning
         if current_prompt == 0:
+            # CHECK FOR QUICK TEMPLATE SELECTION FIRST (1-4)
+            template = find_template_by_input(user_input)
+            if template:
+                # Apply template config to user_data
+                self.state.user_data.update(template["config"])
+
+                # Jump to confirmation (prompt 6) since template provides everything
+                self.state.current_prompt = 6
+
+                # Generate summary showing selected template
+                summary = get_template_summary(template)
+                response = f"""**Template Selected!**
+
+{summary}
+
+{generate_confirmation_summary(self.state.user_data)}"""
+                self.state.add_message("assistant", response)
+                return response
+
+            # Normal flow: parse environment input
             parsed = await parse_environment_input(user_input, self.state.user_data)
 
             # Check if parsing failed
@@ -140,8 +165,16 @@ Please try again!"""
             has_location = self.state.user_data.get("location", "").strip()
             has_network = self.state.user_data.get("network_logical_name", "").strip()
 
-            # ALL VALUES PRESENT → Proceed (all must be non-empty strings)
-            if has_env and has_location and has_network:
+            # STRICT VALIDATION: All values must be present AND valid
+            # Environment must be non-empty (min 2 chars)
+            # Location must be non-empty
+            # Network must be non-empty (min 3 chars, max 7 chars)
+            env_valid = has_env and len(has_env) >= 2
+            location_valid = has_location and len(has_location) >= 3
+            network_valid = has_network and len(has_network) >= 3 and len(has_network) <= 7
+
+            # ALL VALUES PRESENT AND VALID → Proceed
+            if env_valid and location_valid and network_valid:
                 self.state.current_prompt = 1
                 response = get_prompt_message(1, self.state.user_data)
                 self.state.add_message("assistant", response)
@@ -149,12 +182,23 @@ Please try again!"""
 
             # PARTIAL VALUES → Ask for missing
             missing = []
-            if not has_env:
-                missing.append("**Environment** (DEV, PROD, QA, UAT, TEST, SBX, LAB, etc.)")
-            if not has_location:
-                missing.append("**Azure Region** (westeurope, eastus, northeurope, etc.)")
-            if not has_network:
-                missing.append("**Netzwerkname** (max 7 Zeichen, alphanumerisch)")
+            if not env_valid:
+                if not has_env:
+                    missing.append("**Environment** (DEV, PROD, QA, UAT, TEST, SBX, LAB, etc.)")
+                else:
+                    missing.append(f"**Environment** (current: '{has_env}' - must be at least 2 chars)")
+            if not location_valid:
+                if not has_location:
+                    missing.append("**Azure Region** (westeurope, eastus, northeurope, etc.)")
+                else:
+                    missing.append(f"**Azure Region** (current: '{has_location}' - must be at least 3 chars)")
+            if not network_valid:
+                if not has_network:
+                    missing.append("**Network Name** (3-7 characters, alphanumeric)")
+                elif len(has_network) < 3:
+                    missing.append(f"**Network Name** (current: '{has_network}' - must be at least 3 chars)")
+                elif len(has_network) > 7:
+                    missing.append(f"**Network Name** (current: '{has_network}' - max 7 chars)")
 
             collected = []
             if has_env:
@@ -269,12 +313,12 @@ Please try again, or provide values one at a time!"""
 
                 # Skip Prompt 3 (Architecture) → Go to Prompt 4 (Network)
                 self.state.current_prompt = 4
-                response = f"""Perfekt! Da dies ein **{purpose}** System mit **{database_size}** Sizing ist, habe ich es automatisch konfiguriert als:
+                response = f"""Perfect! Since this is a **{purpose}** system with **{database_size}** sizing, I've automatically configured it as:
 
-✅ **Standalone Deployment** (alles auf einem Server)
-✅ **Keine High Availability** (single instance, kostenoptimiert)
+✅ **Standalone Deployment** (everything on one server)
+✅ **No High Availability** (single instance, cost-optimized)
 
-Das ist die empfohlene Konfiguration für Demo/Test/Development Umgebungen.
+This is the recommended configuration for Demo/Test/Development environments.
 
 {get_prompt_message(4, self.state.user_data)}"""
                 self.state.add_message("assistant", response)

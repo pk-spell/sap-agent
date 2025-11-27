@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   makeStyles,
   tokens,
@@ -14,9 +14,10 @@ import {
   DialogActions,
   DialogContent,
 } from '@fluentui/react-components'
-import { Chat24Regular, Document24Regular } from '@fluentui/react-icons'
+import { Chat24Regular, Document24Regular, Copy24Regular, ArrowDownload24Regular, Info24Regular } from '@fluentui/react-icons'
 import ChatWindow from './components/ChatWindow'
 import SessionList from './components/SessionList'
+import ConfigDashboard from './components/ConfigDashboard'
 import { apiClient } from './api/client'
 
 const useStyles = makeStyles({
@@ -68,6 +69,35 @@ export default function App() {
   const [sessionRefreshKey, setSessionRefreshKey] = useState(0)
   const creatingSessionRef = useRef(false)
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K: New Session
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        createNewSession()
+      }
+      // Ctrl+P: Preview TFVARS (if session exists)
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'p' && sessionId) {
+        e.preventDefault()
+        handlePreviewTfvars()
+      }
+      // Ctrl+D: Download (if TFVARS ready)
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'd' && sessionId && progress === 100) {
+        e.preventDefault()
+        handleDownloadFromPreview()
+      }
+      // Ctrl+I: View Config Dashboard (if session exists)
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'i' && sessionId) {
+        e.preventDefault()
+        handleOpenDashboard()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [sessionId, progress]) // Re-attach when sessionId or progress changes
+
   // Don't create session automatically on mount anymore
   // User must explicitly click "New Session" or start typing
 
@@ -97,11 +127,17 @@ export default function App() {
     setSessionId(newSessionId)
     setProgress(0)
 
-    // Check if the selected session has tfvars ready
+    // Load session state and calculate progress
     try {
       const data = await apiClient.loadChat(newSessionId)
+
       if (data.tfvars_ready) {
         setProgress(100)
+      } else if (data.current_prompt !== undefined) {
+        // Calculate progress based on current_prompt (0-5 = 6 total steps)
+        const totalSteps = 6
+        const currentStep = data.current_prompt
+        setProgress((currentStep / totalSteps) * 100)
       }
     } catch (error) {
       console.error('Failed to load session state:', error)
@@ -118,6 +154,9 @@ export default function App() {
 
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewContent, setPreviewContent] = useState('')
+  const [dashboardOpen, setDashboardOpen] = useState(false)
+  const [userData, setUserData] = useState<Record<string, any>>({})
+  const [tfvarsReady, setTfvarsReady] = useState(false)
 
   const handlePreviewTfvars = async () => {
     if (!sessionId) return
@@ -147,6 +186,54 @@ export default function App() {
       document.body.removeChild(a)
     } catch (error) {
       console.error('Download failed:', error)
+    }
+  }
+
+  const handleCopyToClipboard = async () => {
+    if (!previewContent) return
+
+    try {
+      await navigator.clipboard.writeText(previewContent)
+      alert('TFVARS copied to clipboard!')
+    } catch (error) {
+      console.error('Copy failed:', error)
+      alert('Failed to copy to clipboard')
+    }
+  }
+
+  const handleExportAsJSON = async () => {
+    if (!sessionId) return
+
+    try {
+      const jsonData = await apiClient.exportAsJSON(sessionId)
+      const jsonString = JSON.stringify(jsonData, null, 2)
+      const blob = new Blob([jsonString], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `sap-config-${sessionId.slice(0, 8)}.json`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error('JSON export failed:', error)
+      alert('Failed to export as JSON')
+    }
+  }
+
+  const handleOpenDashboard = async () => {
+    if (!sessionId) return
+
+    try {
+      const data = await apiClient.loadChat(sessionId)
+      const jsonData = await apiClient.exportAsJSON(sessionId)
+      setUserData(jsonData.configuration || {})
+      setTfvarsReady(data.tfvars_ready || false)
+      setDashboardOpen(true)
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error)
+      alert('Failed to load configuration data')
     }
   }
 
@@ -194,23 +281,83 @@ export default function App() {
           </Text>
 
           {sessionId && (
-            <Button
-              appearance="secondary"
-              icon={<Document24Regular />}
-              onClick={handlePreviewTfvars}
-            >
-              Preview TFVARS
-            </Button>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <Button
+                appearance="secondary"
+                icon={<Info24Regular />}
+                onClick={handleOpenDashboard}
+              >
+                View Config
+              </Button>
+              <Button
+                appearance="secondary"
+                icon={<ArrowDownload24Regular />}
+                onClick={handleExportAsJSON}
+              >
+                Export JSON
+              </Button>
+              <Button
+                appearance="secondary"
+                icon={<Document24Regular />}
+                onClick={handlePreviewTfvars}
+              >
+                Preview TFVARS
+              </Button>
+            </div>
           )}
         </div>
 
-        {/* STICKY PROGRESS BAR - FUNKTIONIERT! 🎉 */}
+        {/* ENHANCED PROGRESS INDICATOR */}
         {progress > 0 && progress < 100 && (
           <div className={styles.progressContainer}>
-            <Text size={300} style={{ marginBottom: '8px' }}>
-              Progress: {Math.round(progress)}%
-            </Text>
-            <ProgressBar value={progress / 100} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <Text size={300} weight="semibold">
+                Configuration in Progress
+              </Text>
+              <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                {Math.round(progress)}% Complete
+              </Text>
+            </div>
+            <ProgressBar value={progress / 100} thickness="large" />
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+              {['Environment', 'SAP System', 'Sizing', 'Architecture', 'Network', 'OS'].map((step, idx) => {
+                const stepProgress = ((idx + 1) / 6) * 100
+                const isCompleted = progress >= stepProgress
+                const isCurrent = progress >= (idx / 6) * 100 && progress < stepProgress
+                return (
+                  <div key={idx} style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    flex: 1,
+                    opacity: isCompleted || isCurrent ? 1 : 0.4
+                  }}>
+                    <div style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      backgroundColor: isCompleted ? tokens.colorPaletteGreenBackground3 : isCurrent ? tokens.colorBrandBackground : tokens.colorNeutralBackground3,
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      marginBottom: '4px'
+                    }}>
+                      {isCompleted ? '✓' : idx + 1}
+                    </div>
+                    <Text size={100} style={{
+                      color: isCurrent ? tokens.colorBrandForeground1 : tokens.colorNeutralForeground3,
+                      fontWeight: isCurrent ? 600 : 400,
+                      textAlign: 'center'
+                    }}>
+                      {step}
+                    </Text>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -219,9 +366,31 @@ export default function App() {
             className={styles.progressContainer}
             style={{ backgroundColor: tokens.colorPaletteGreenBackground2 }}
           >
-            <Text size={300} weight="semibold">
-              ✅ Configuration completed!
-            </Text>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                backgroundColor: tokens.colorPaletteGreenForeground1,
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '18px',
+                fontWeight: 'bold'
+              }}>
+                ✓
+              </div>
+              <div>
+                <Text size={400} weight="semibold" style={{ color: tokens.colorPaletteGreenForeground1 }}>
+                  Configuration Complete!
+                </Text>
+                <br />
+                <Text size={200} style={{ color: tokens.colorNeutralForeground3 }}>
+                  Your TFVARS file is ready to download
+                </Text>
+              </div>
+            </div>
           </div>
         )}
 
@@ -280,23 +449,62 @@ export default function App() {
                 style={{
                   fontFamily: 'monospace',
                   fontSize: '12px',
-                  whiteSpace: 'pre',
+                  whiteSpace: 'pre-wrap',
                   overflow: 'auto',
                   maxHeight: '500px',
                   padding: '12px',
                   backgroundColor: tokens.colorNeutralBackground2,
                   borderRadius: '4px',
+                  border: `1px solid ${tokens.colorNeutralStroke1}`,
                 }}
               >
-                {previewContent || 'Loading...'}
+                {previewContent ? (
+                  <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '12px' }}>
+                    {previewContent.split('\n').map((line, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: '12px' }}>
+                        <span style={{
+                          color: tokens.colorNeutralForeground3,
+                          userSelect: 'none',
+                          minWidth: '40px',
+                          textAlign: 'right'
+                        }}>
+                          {idx + 1}
+                        </span>
+                        <span>{line}</span>
+                      </div>
+                    ))}
+                  </pre>
+                ) : (
+                  'Loading...'
+                )}
               </div>
             </DialogContent>
             <DialogActions>
               <Button appearance="secondary" onClick={() => setPreviewOpen(false)}>
                 Close
               </Button>
+              <Button appearance="secondary" icon={<Copy24Regular />} onClick={handleCopyToClipboard}>
+                Copy to Clipboard
+              </Button>
               <Button appearance="primary" icon={<Document24Regular />} onClick={handleDownloadFromPreview}>
                 Download
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+
+      {/* Configuration Dashboard Dialog */}
+      <Dialog open={dashboardOpen} onOpenChange={(_, data) => setDashboardOpen(data.open)}>
+        <DialogSurface style={{ maxWidth: '900px', maxHeight: '90vh' }}>
+          <DialogBody>
+            <DialogTitle>Configuration Dashboard</DialogTitle>
+            <DialogContent style={{ overflowY: 'auto', maxHeight: '70vh' }}>
+              <ConfigDashboard userData={userData} tfvarsReady={tfvarsReady} />
+            </DialogContent>
+            <DialogActions>
+              <Button appearance="secondary" onClick={() => setDashboardOpen(false)}>
+                Close
               </Button>
             </DialogActions>
           </DialogBody>
